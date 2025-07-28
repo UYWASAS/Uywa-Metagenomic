@@ -17,6 +17,15 @@ st.markdown("""
     html, body, .stApp, .main, .block-container {
         background: linear-gradient(120deg, #f3f6fa 0%, #e3ecf7 100%) !important;
         background-color: #f3f6fa !important;
+        font-size: 14px !important;
+        font-family: 'Montserrat', Arial, sans-serif !important;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        font-size: 1.2em !important;
+        font-family: 'Montserrat', Arial, sans-serif !important;
+    }
+    .stMarkdown, .stText, .stDataFrame, .stTable, .stPlotlyChart, .stSelectbox, .stMultiSelect, .stNumberInput, .stTextInput, .stButton, .stFileUploader {
+        font-size: 15px !important;
     }
     section[data-testid="stSidebar"] {
         background: #19345c !important;
@@ -42,14 +51,14 @@ with st.sidebar:
     st.markdown(
         """
         <div style='text-align: center; margin-bottom:10px;'>
-            <div style='font-size:32px;font-family:Montserrat,Arial;color:#fff; margin-top: 10px;letter-spacing:1px; font-weight:700; line-height:1.1;'>
+            <div style='font-size:28px;font-family:Montserrat,Arial;color:#fff; margin-top: 10px;letter-spacing:1px; font-weight:700; line-height:1.1;'>
                 UYWA-<br>MICROBIOTA<sup>®</sup>
             </div>
-            <div style='font-size:16px;color:#fff; margin-top: 5px; font-family:Montserrat,Arial; line-height: 1.1;'>
+            <div style='font-size:14px;color:#fff; margin-top: 5px; font-family:Montserrat,Arial; line-height: 1.1;'>
                 Análisis Interactivo 16S
             </div>
             <hr style='border-top:1px solid #2e4771; margin: 18px 0;'>
-            <div style='font-size:14px;color:#fff; margin-top: 8px;'>
+            <div style='font-size:13px;color:#fff; margin-top: 8px;'>
                 <b>Contacto:</b> uywasas@gmail.com<br>
                 Derechos reservados © 2025
             </div>
@@ -83,7 +92,7 @@ if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
     login()
 
 USER_KEY = f"uywa_mbio_{st.session_state['usuario']}"
-st.markdown(f"<div style='text-align:right'>👤 Usuario: <b>{st.session_state['usuario']}</b></div>", unsafe_allow_html=True)
+st.markdown(f"<div style='text-align:right; font-size:13px;'>👤 Usuario: <b>{st.session_state['usuario']}</b></div>", unsafe_allow_html=True)
 
 # ======================== BLOQUE 4: UTILIDADES DE SESIÓN ========================
 # Ya se importó safe_float y clean_state desde utils.py
@@ -91,20 +100,49 @@ st.markdown(f"<div style='text-align:right'>👤 Usuario: <b>{st.session_state['
 # ======================== BLOQUE 5: TITULO, UPLOADERS Y TABS PRINCIPALES ========================
 st.title("Gestión y Análisis de Microbiota 16S")
 
-with st.sidebar:
-    st.header("Carga de Archivos")
-    otus_file = st.file_uploader("Tabla OTUs/ASVs (csv/tsv)", type=["csv", "tsv"], key="otus_upload")
-    taxonomy_file = st.file_uploader("Taxonomía (csv/tsv)", type=["csv", "tsv"], key="tax_upload")
-    metadata_file = st.file_uploader("Metadata (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="meta_upload")
+tabs = st.tabs(["Carga de Archivos", "Diversidad", "Análisis Estadístico", "Visualización Taxonómica"])
 
-tabs = st.tabs(["Diversidad", "Análisis Estadístico", "Visualización Taxonómica"])
-
-# ======================== BLOQUE 6: LLAMADA A CADA MÓDULO ========================
+# ======================== BLOQUE 6: CARGA DE ARCHIVOS EN PESTAÑA 0 ========================
 with tabs[0]:
-    diversity_tab(otus_file, taxonomy_file, metadata_file)
+    st.header("Carga de Archivos de Microbiota")
+    otus_file = st.file_uploader("Tabla OTUs/ASVs (csv/tsv)", type=["csv", "tsv"], key="otus_upload_tab")
+    taxonomy_file = st.file_uploader("Taxonomía (csv/tsv)", type=["csv", "tsv"], key="tax_upload_tab")
+    metadata_file = st.file_uploader("Metadata (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="meta_upload_tab")
 
+    # Muestra información básica si los archivos están cargados
+    if otus_file:
+        df = load_table(otus_file)
+        st.success(f"OTUs/ASVs: {df.shape[0]} muestras x {df.shape[1]} OTUs")
+    if taxonomy_file:
+        df = load_table(taxonomy_file)
+        st.success(f"Taxonomía: {df.shape[0]} filas x {df.shape[1]} columnas")
+    if metadata_file:
+        df = load_table(metadata_file)
+        st.success(f"Metadata: {df.shape[0]} muestras x {df.shape[1]} variables")
+
+    # Guarda en sesión para otras pestañas
+    if otus_file: st.session_state["otus_file"] = otus_file
+    if taxonomy_file: st.session_state["taxonomy_file"] = taxonomy_file
+    if metadata_file: st.session_state["metadata_file"] = metadata_file
+
+# ======================== BLOQUE 7: LLAMADA A CADA MÓDULO ========================
 with tabs[1]:
-    stats_tab(otus_file, taxonomy_file, metadata_file)
+    diversity_tab(
+        st.session_state.get("otus_file"),
+        st.session_state.get("taxonomy_file"),
+        st.session_state.get("metadata_file"),
+    )
 
 with tabs[2]:
-    taxonomy_tab(otus_file, taxonomy_file, metadata_file)
+    stats_tab(
+        st.session_state.get("otus_file"),
+        st.session_state.get("taxonomy_file"),
+        st.session_state.get("metadata_file"),
+    )
+
+with tabs[3]:
+    taxonomy_tab(
+        st.session_state.get("otus_file"),
+        st.session_state.get("taxonomy_file"),
+        st.session_state.get("metadata_file"),
+    )
