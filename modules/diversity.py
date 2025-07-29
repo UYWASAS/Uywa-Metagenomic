@@ -4,7 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from skbio.diversity import alpha_diversity, beta_diversity
 from skbio.stats.ordination import pcoa
-from scipy.stats import kruskal, f_oneway
+from scipy.stats import kruskal
 from modules.utils import load_table
 import numpy as np
 
@@ -37,8 +37,9 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
         st.warning("Por favor, sube la tabla de OTUs/ASVs y la metadata en la pestaña de carga.")
         return
 
-    otus = load_table(otus_file)
-    metadata = load_table(metadata_file)
+    # Asegúrate de usar los nombres de columna estándar:
+    otus = load_table(otus_file, index_col="OTU")
+    metadata = load_table(metadata_file, index_col="SampleID")
     if otus is None or metadata is None:
         st.error("No se pudo cargar los archivos correctamente.")
         return
@@ -52,16 +53,19 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
         "observed_otus": "OTUs Observados"
     }
     alpha_res = {}
+    # Transponer otus para que filas sean muestras, columnas son OTUs
+    otus_T = otus.T
     for m in alpha_metrics:
         try:
-            res = alpha_diversity(m, otus.values, ids=otus.index)
+            res = alpha_diversity(m, otus_T.values, ids=otus_T.index)
             alpha_res[alpha_metrics[m]] = res
         except Exception:
-            alpha_res[alpha_metrics[m]] = [None] * len(otus.index)
-    alpha_df = pd.DataFrame(alpha_res, index=otus.index)
-    alpha_df = alpha_df.join(metadata)
+            alpha_res[alpha_metrics[m]] = [None] * len(otus_T.index)
+    alpha_df = pd.DataFrame(alpha_res, index=otus_T.index)
+    # Agregamos metadata
+    alpha_df = alpha_df.join(metadata, how="left")
 
-    group_col = st.selectbox("Variable de grupo para comparar", metadata.columns, index=0)
+    group_col = st.selectbox("Variable de grupo para comparar", [col for col in metadata.columns if metadata[col].nunique() < len(metadata)], index=0)
     for idx, m in enumerate(alpha_metrics.values()):
         fig = px.box(alpha_df, x=group_col, y=m, color=group_col, points="all", title=f"Índice {m}")
         st.plotly_chart(fig, use_container_width=True)
@@ -73,9 +77,11 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
 
     # =================== CURVAS DE RAREFACCIÓN ===================
     st.subheader("Curvas de Rarefacción (experimental)")
-    sample_sel = st.selectbox("Muestra para rarefacción", otus.index)
+    # Selecciona muestra de las columnas de otus (que son los SampleID)
+    sample_sel = st.selectbox("Muestra para rarefacción", otus.columns)
     if sample_sel:
-        sample = otus.loc[sample_sel]
+        sample = otus[sample_sel]  # Serie: index=OTU, values=abundancias
+        sample = pd.to_numeric(sample, errors="coerce").fillna(0)
         depths, values = rarefaction_curve(sample)
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=depths, y=values, mode="lines+markers"))
@@ -85,9 +91,9 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
     # =================== DIVERSIDAD BETA ===================
     st.subheader("Diversidad Beta (Bray-Curtis PCoA)")
     try:
-        dist = beta_diversity("braycurtis", otus.values, ids=otus.index)
+        dist = beta_diversity("braycurtis", otus_T.values, ids=otus_T.index)
         coords = pcoa(dist).samples
-        coords = coords.join(metadata)
+        coords = coords.join(metadata, how="left")
         fig = px.scatter(coords, x="PC1", y="PC2", color=group_col, symbol=group_col, title="PCoA Bray-Curtis")
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
