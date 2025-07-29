@@ -48,6 +48,43 @@ def get_ellipse(x, y, n_std=2.0, num_points=100):
     x0, y0 = np.mean(x), np.mean(y)
     return ellipse_rot[0] + x0, ellipse_rot[1] + y0
 
+def plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics):
+    color_var = st.selectbox("Variable de agrupación", cat_vars, index=0 if cat_vars else None, key="alpha_color")
+    use_interaction = st.checkbox("¿Mostrar interacción entre dos variables?", value=False)
+    symbol_var = None
+    if use_interaction:
+        symbol_var = st.selectbox("Variable para interacción (símbolo)", cat_vars, index=1 if len(cat_vars)>1 else 0, key="alpha_symbol")
+        if symbol_var == color_var:
+            st.info("Selecciona dos variables diferentes para la interacción.")
+
+    tabs = st.tabs(list(alpha_metrics.values()))
+    for i, metric in enumerate(alpha_metrics.values()):
+        with tabs[i]:
+            st.markdown(f"**{metric}**")
+            fig = px.box(
+                alpha_df, x=color_var, y=metric, color=color_var, points="all",
+                title=f"{metric} por grupo"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            # Interacción opcional sólo si se selecciona y las variables son distintas
+            if use_interaction and symbol_var and symbol_var != color_var:
+                fig_scatter = px.scatter(
+                    alpha_df, x=symbol_var, y=metric, color=color_var, symbol=symbol_var,
+                    title=f"{metric}: interacción {color_var} y {symbol_var}"
+                )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+            # Estadística: ANOVA o Kruskal-Wallis
+            groups = [alpha_df[alpha_df[color_var]==g][metric].dropna() for g in alpha_df[color_var].unique()]
+            if all(len(g) > 1 for g in groups) and len(groups) > 1:
+                try:
+                    fval, pval = f_oneway(*groups)
+                    st.caption(f"ANOVA: p = {pval:.3g}")
+                except Exception:
+                    kw = kruskal(*groups)
+                    st.caption(f"Kruskal-Wallis: p = {kw.pvalue:.3g}")
+            else:
+                st.caption("No hay replicación suficiente para ANOVA/Kruskal-Wallis.")
+
 def diversity_tab(otus_file, taxonomy_file, metadata_file):
     st.header("Análisis de Diversidad Alfa y Beta")
     if not otus_file or not metadata_file:
@@ -84,39 +121,8 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
         except Exception:
             alpha_df[alpha_metrics[m]] = np.nan
     alpha_df = alpha_df.join(metadata)
-
-    # Selección interactiva de variables para color y símbolo
     cat_vars = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
-    color_var = st.selectbox("Variable para color en boxplot", cat_vars, index=0 if cat_vars else None, key="alpha_color")
-    symbol_var = st.selectbox("Variable para símbolo en boxplot", cat_vars, index=1 if len(cat_vars)>1 else 0, key="alpha_symbol")
-
-    # Boxplot + puntos (no symbol en box!) + scatter para interacción
-    for metric in alpha_metrics.values():
-        st.markdown(f"**{metric}**")
-        # Boxplot solo color
-        fig = px.box(
-            alpha_df, x=color_var, y=metric, color=color_var, points="all",
-            title=f"{metric} por grupo"
-        )
-        # Scatter para interacción color y símbolo
-        fig_scatter = px.scatter(
-            alpha_df, x=symbol_var, y=metric, color=color_var, symbol=symbol_var if symbol_var != color_var else None,
-            title=f"{metric}: interacción {color_var} y {symbol_var}"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.plotly_chart(fig_scatter, use_container_width=True)
-
-        # Estadística: ANOVA o Kruskal-Wallis
-        groups = [alpha_df[alpha_df[color_var]==g][metric].dropna() for g in alpha_df[color_var].unique()]
-        if all(len(g) > 1 for g in groups) and len(groups) > 1:
-            try:
-                fval, pval = f_oneway(*groups)
-                st.caption(f"ANOVA: p = {pval:.3g}")
-            except Exception:
-                kw = kruskal(*groups)
-                st.caption(f"Kruskal-Wallis: p = {kw.pvalue:.3g}")
-        else:
-            st.caption("No hay replicación suficiente para ANOVA/Kruskal-Wallis.")
+    plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics)
 
     # =================== CURVAS DE RAREFACCIÓN ===================
     st.subheader("Curvas de Rarefacción (experimental)")
@@ -144,18 +150,17 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
         coords = pd.DataFrame(nmds_coords, index=otus_T.index, columns=["NMDS1", "NMDS2"])
         coords = coords.join(metadata, how="left")
         # Selección de variables para color y símbolo
-        color_var_beta = st.selectbox("Variable para color NMDS", cat_vars, index=0, key="beta_color")
-        symbol_var_beta = st.selectbox("Variable para símbolo NMDS", cat_vars, index=1 if len(cat_vars)>1 else 0, key="beta_symbol")
+        cat_vars_beta = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
+        color_var_beta = st.selectbox("Variable para color NMDS", cat_vars_beta, index=0, key="beta_color")
+        symbol_var_beta = st.selectbox("Variable para símbolo NMDS", cat_vars_beta, index=1 if len(cat_vars_beta)>1 else 0, key="beta_symbol")
 
         fig = go.Figure()
         palette = px.colors.qualitative.Dark24
         color_map = {g: palette[i % len(palette)] for i, g in enumerate(coords[color_var_beta].unique())}
-        # Símbolos para grupos
         symbol_types = ['circle', 'triangle-up', 'square', 'star', 'diamond', 'cross', 'x', 'triangle-down']
         symbol_vals = {}
         for i, val in enumerate(coords[symbol_var_beta].unique()):
             symbol_vals[val] = symbol_types[i % len(symbol_types)]
-        # Dibuja puntos y elipses por grupo
         for i, (group, group_df) in enumerate(coords.groupby(color_var_beta)):
             fig.add_trace(go.Scatter(
                 x=group_df["NMDS1"], y=group_df["NMDS2"],
@@ -170,7 +175,6 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
                 customdata=group_df.index,
                 hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>"+color_var_beta+": "+str(group)
             ))
-            # Elipse para el grupo
             ex, ey = get_ellipse(group_df["NMDS1"].values, group_df["NMDS2"].values)
             if ex is not None:
                 fig.add_trace(go.Scatter(
