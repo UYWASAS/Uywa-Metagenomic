@@ -18,7 +18,8 @@ def rarefaction_curve(sample, steps=10):
     # Expandir la muestra: cada OTU tantas veces como su abundancia
     population = []
     for otu, count in sample.items():
-        population.extend([otu] * int(count))
+        if count > 0:
+            population.extend([otu] * int(count))
     population = np.array(population)
     for d in depths:
         if d > len(population) or d == 0:
@@ -37,12 +38,19 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
         st.warning("Por favor, sube la tabla de OTUs/ASVs y la metadata en la pestaña de carga.")
         return
 
-    # Asegúrate de usar los nombres de columna estándar:
     otus = load_table(otus_file, index_col="OTU")
     metadata = load_table(metadata_file, index_col="SampleID")
     if otus is None or metadata is None:
         st.error("No se pudo cargar los archivos correctamente.")
         return
+
+    # Intersección de muestras presentes en ambos archivos
+    common_samples = [s for s in otus.columns if s in metadata.index]
+    if not common_samples:
+        st.error("No hay coincidencias entre los nombres de muestra en la tabla OTU y la metadata.")
+        return
+    otus = otus[common_samples]
+    metadata = metadata.loc[common_samples]
 
     # =================== DIVERSIDAD ALFA ===================
     st.subheader("Diversidad Alfa")
@@ -52,41 +60,44 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
         "chao1": "Chao1",
         "observed_otus": "OTUs Observados"
     }
-    alpha_res = {}
-    # Transponer otus para que filas sean muestras, columnas son OTUs
-    otus_T = otus.T
+    alpha_df = pd.DataFrame(index=common_samples)
+    otus_T = otus.T  # Filas = muestras, columnas = OTUs
     for m in alpha_metrics:
         try:
-            res = alpha_diversity(m, otus_T.values, ids=otus_T.index)
-            alpha_res[alpha_metrics[m]] = res
+            alpha_df[alpha_metrics[m]] = alpha_diversity(m, otus_T.values, ids=otus_T.index)
         except Exception:
-            alpha_res[alpha_metrics[m]] = [None] * len(otus_T.index)
-    alpha_df = pd.DataFrame(alpha_res, index=otus_T.index)
-    # Agregamos metadata
-    alpha_df = alpha_df.join(metadata, how="left")
+            alpha_df[alpha_metrics[m]] = np.nan
+    alpha_df = alpha_df.join(metadata)
 
-    group_col = st.selectbox("Variable de grupo para comparar", [col for col in metadata.columns if metadata[col].nunique() < len(metadata)], index=0)
-    for idx, m in enumerate(alpha_metrics.values()):
-        fig = px.box(alpha_df, x=group_col, y=m, color=group_col, points="all", title=f"Índice {m}")
-        st.plotly_chart(fig, use_container_width=True)
-        # Estadística rápida
-        groups = [alpha_df[alpha_df[group_col]==g][m].dropna() for g in alpha_df[group_col].unique()]
-        if len(groups) > 1:
-            kw = kruskal(*groups)
-            st.caption(f"Kruskal-Wallis p={kw.pvalue:.3g}")
+    # Elige variable de grupo (sólo aquellas con más de un valor y menos que el total)
+    group_vars = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
+    group_col = st.selectbox("Variable de grupo para comparar", group_vars, index=0 if group_vars else None)
+    if group_col:
+        for m in alpha_metrics.values():
+            fig = px.box(alpha_df, x=group_col, y=m, color=group_col, points="all", title=f"Índice {m}")
+            st.plotly_chart(fig, use_container_width=True)
+            # Estadística rápida
+            groups = [alpha_df[alpha_df[group_col]==g][m].dropna() for g in alpha_df[group_col].unique()]
+            if all(len(g) > 0 for g in groups) and len(groups) > 1:
+                kw = kruskal(*groups)
+                st.caption(f"Kruskal-Wallis p={kw.pvalue:.3g}")
+            else:
+                st.caption("Kruskal-Wallis p=nan")
 
     # =================== CURVAS DE RAREFACCIÓN ===================
     st.subheader("Curvas de Rarefacción (experimental)")
-    # Selecciona muestra de las columnas de otus (que son los SampleID)
-    sample_sel = st.selectbox("Muestra para rarefacción", otus.columns)
+    sample_sel = st.selectbox("Muestra para rarefacción", common_samples)
     if sample_sel:
-        sample = otus[sample_sel]  # Serie: index=OTU, values=abundancias
+        sample = otus[sample_sel]
         sample = pd.to_numeric(sample, errors="coerce").fillna(0)
-        depths, values = rarefaction_curve(sample)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=depths, y=values, mode="lines+markers"))
-        fig.update_layout(title=f"Rarefacción: {sample_sel}", xaxis_title="Profundidad", yaxis_title="OTUs Observados")
-        st.plotly_chart(fig, use_container_width=True)
+        if sample.sum() == 0:
+            st.error("La muestra seleccionada está vacía. Prueba otra muestra.")
+        else:
+            depths, values = rarefaction_curve(sample)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=depths, y=values, mode="lines+markers"))
+            fig.update_layout(title=f"Rarefacción: {sample_sel}", xaxis_title="Profundidad", yaxis_title="OTUs Observados")
+            st.plotly_chart(fig, use_container_width=True)
 
     # =================== DIVERSIDAD BETA ===================
     st.subheader("Diversidad Beta (Bray-Curtis PCoA)")
@@ -94,7 +105,10 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
         dist = beta_diversity("braycurtis", otus_T.values, ids=otus_T.index)
         coords = pcoa(dist).samples
         coords = coords.join(metadata, how="left")
-        fig = px.scatter(coords, x="PC1", y="PC2", color=group_col, symbol=group_col, title="PCoA Bray-Curtis")
+        if group_col:
+            fig = px.scatter(coords, x="PC1", y="PC2", color=group_col, symbol=group_col, title="PCoA Bray-Curtis")
+        else:
+            fig = px.scatter(coords, x="PC1", y="PC2", title="PCoA Bray-Curtis")
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.warning(f"No se pudo calcular PCoA Bray-Curtis: {e}")
