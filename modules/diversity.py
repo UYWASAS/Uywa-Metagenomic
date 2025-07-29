@@ -6,11 +6,35 @@ from skbio.diversity import alpha_diversity, beta_diversity
 from skbio.stats.ordination import pcoa
 from scipy.stats import kruskal, f_oneway
 from modules.utils import load_table
+import numpy as np
+
+def rarefaction_curve(sample, steps=10):
+    """
+    Crea una curva de rarefacción para una muestra dada (serie de abundancias).
+    """
+    nseqs = int(sample.sum())
+    depths = np.linspace(10, nseqs, steps, dtype=int)
+    values = []
+    # Expandir la muestra: cada OTU tantas veces como su abundancia
+    population = []
+    for otu, count in sample.items():
+        population.extend([otu] * int(count))
+    population = np.array(population)
+    for d in depths:
+        if d > len(population) or d == 0:
+            values.append(np.nan)
+            continue
+        outs = []
+        for _ in range(10):
+            subsample = np.random.choice(population, d, replace=False)
+            outs.append(len(np.unique(subsample)))
+        values.append(np.mean(outs))
+    return depths, values
 
 def diversity_tab(otus_file, taxonomy_file, metadata_file):
     st.header("Análisis de Diversidad Alfa y Beta")
     if not otus_file or not metadata_file:
-        st.warning("Por favor, sube la tabla de OTUs/ASVs y la metadata.")
+        st.warning("Por favor, sube la tabla de OTUs/ASVs y la metadata en la pestaña de carga.")
         return
 
     otus = load_table(otus_file)
@@ -49,19 +73,6 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
 
     # =================== CURVAS DE RAREFACCIÓN ===================
     st.subheader("Curvas de Rarefacción (experimental)")
-    # Implementación simple para abundancias
-    import numpy as np
-    def rarefaction_curve(sample, steps=10):
-        nseqs = int(sample.sum())
-        depths = np.linspace(10, nseqs, steps, dtype=int)
-        values = []
-        for d in depths:
-            outs = []
-            for _ in range(10):
-                outs.append(len(np.unique(np.random.choice(sample.index, d, p=sample/sample.sum(), replace=True))))
-            values.append(np.mean(outs))
-        return depths, values
-
     sample_sel = st.selectbox("Muestra para rarefacción", otus.index)
     if sample_sel:
         sample = otus.loc[sample_sel]
