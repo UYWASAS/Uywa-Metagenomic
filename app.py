@@ -105,8 +105,8 @@ tabs = st.tabs(["Carga de Archivos", "Diversidad", "Análisis Estadístico", "Vi
 # ======================== BLOQUE 6: CARGA DE ARCHIVOS EN PESTAÑA 0 ========================
 with tabs[0]:
     st.header("Carga de Archivos de Microbiota")
-    otus_file = st.file_uploader("Tabla OTUs/ASVs (csv/tsv)", type=["csv", "tsv"], key="otus_upload_tab")
-    taxonomy_file = st.file_uploader("Taxonomía (csv/tsv)", type=["csv", "tsv"], key="tax_upload_tab")
+    otus_file = st.file_uploader("Tabla OTUs/ASVs (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="otus_upload_tab")
+    taxonomy_file = st.file_uploader("Taxonomía (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="tax_upload_tab")
     metadata_file = st.file_uploader("Metadata (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="meta_upload_tab")
 
     # Muestra información básica si los archivos están cargados
