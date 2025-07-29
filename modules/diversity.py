@@ -164,18 +164,21 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # PERMANOVA - verificación robusta
+    # PERMANOVA - verificación robusta y compatible con scikit-bio actual
     if color_var_beta and color_var_beta in metadata.columns:
         try:
             grouping = metadata.loc[coords.index, color_var_beta]
-            if grouping.nunique() > 1 and all(grouping.value_counts() > 1):
+            # Requiere al menos dos grupos y al menos dos muestras por grupo
+            group_counts = grouping.value_counts()
+            if grouping.nunique() > 1 and all(group_counts > 1):
                 dm = DistanceMatrix(dist.data, ids=dist.ids)
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
+                r2 = permanova_res['r2'] if 'r2' in permanova_res else None
                 st.caption(
                     f"PERMANOVA (adonis) para {color_var_beta}: "
                     f"p = {permanova_res['p-value']:.3g}, "
-                    f"pseudo-F = {permanova_res['test statistic']:.3g}, "
-                    f"R2 = {permanova_res['test statistic']/permanova_res['denominator']:.3g}"
+                    f"pseudo-F = {permanova_res['test statistic']:.3g}"
+                    + (f", R2 = {r2:.3g}" if r2 is not None else "")
                 )
             else:
                 st.caption("PERMANOVA requiere al menos 2 grupos con más de 1 muestra cada uno.")
