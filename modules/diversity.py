@@ -90,15 +90,15 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
     color_var = st.selectbox("Variable para color en boxplot", cat_vars, index=0 if cat_vars else None, key="alpha_color")
     symbol_var = st.selectbox("Variable para símbolo en boxplot", cat_vars, index=1 if len(cat_vars)>1 else 0, key="alpha_symbol")
 
-    # Boxplot + puntos + interacción de variables + elipses en 2D (scatter de índices)
+    # Boxplot + puntos (no symbol en box!) + scatter para interacción
     for metric in alpha_metrics.values():
         st.markdown(f"**{metric}**")
+        # Boxplot solo color
         fig = px.box(
             alpha_df, x=color_var, y=metric, color=color_var, points="all",
-            symbol=symbol_var if symbol_var != color_var else None,
             title=f"{metric} por grupo"
         )
-        # Overlay: scatter (para mostrar interacción/color/símbolo)
+        # Scatter para interacción color y símbolo
         fig_scatter = px.scatter(
             alpha_df, x=symbol_var, y=metric, color=color_var, symbol=symbol_var if symbol_var != color_var else None,
             title=f"{metric}: interacción {color_var} y {symbol_var}"
