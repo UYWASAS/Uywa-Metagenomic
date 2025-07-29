@@ -3,10 +3,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from skbio.diversity import alpha_diversity, beta_diversity
-from skbio.stats.ordination import pcoa
 from skbio.stats.distance import permanova, DistanceMatrix
-from skbio.stats.ordination import nmds
 from scipy.stats import kruskal, f_oneway
+from sklearn.manifold import MDS
 from modules.utils import load_table
 import numpy as np
 
@@ -139,9 +138,10 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
     try:
         otus_T = otus.T
         dist = beta_diversity("braycurtis", otus_T.values, ids=otus_T.index)
-        # NMDS (2D)
-        nmds_res = nmds(distance_matrix=dist, n_components=2, random_state=42)
-        coords = pd.DataFrame(nmds_res.samples.values, index=otus_T.index, columns=["NMDS1", "NMDS2"])
+        # NMDS con sklearn (2D)
+        mds = MDS(n_components=2, metric=False, dissimilarity='precomputed', random_state=42, n_init=10, max_iter=300)
+        nmds_coords = mds.fit_transform(dist.data)
+        coords = pd.DataFrame(nmds_coords, index=otus_T.index, columns=["NMDS1", "NMDS2"])
         coords = coords.join(metadata, how="left")
         # Selección de variables para color y símbolo
         color_var_beta = st.selectbox("Variable para color NMDS", cat_vars, index=0, key="beta_color")
