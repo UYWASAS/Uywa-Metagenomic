@@ -30,7 +30,6 @@ def rarefaction_curve(sample, steps=10):
     return depths, values
 
 def get_ellipse(x, y, n_std=2.0, num_points=100):
-    """Devuelve puntos para una elipse de dispersión tipo confidence ellipse."""
     if len(x) < 3:
         return None, None
     cov = np.cov(x, y)
@@ -66,14 +65,12 @@ def plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics):
                 title=f"{metric} por grupo"
             )
             st.plotly_chart(fig, use_container_width=True)
-            # Interacción opcional sólo si se selecciona y las variables son distintas
             if use_interaction and symbol_var and symbol_var != color_var:
                 fig_scatter = px.scatter(
                     alpha_df, x=symbol_var, y=metric, color=color_var, symbol=symbol_var,
                     title=f"{metric}: interacción {color_var} y {symbol_var}"
                 )
                 st.plotly_chart(fig_scatter, use_container_width=True)
-            # Estadística: ANOVA o Kruskal-Wallis
             groups = [alpha_df[alpha_df[color_var]==g][metric].dropna() for g in alpha_df[color_var].unique()]
             if all(len(g) > 1 for g in groups) and len(groups) > 1:
                 try:
@@ -94,13 +91,13 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
         if symbol_var_beta == color_var_beta:
             st.info("Selecciona dos variables diferentes para la interacción.")
     else:
-        symbol_var_beta = color_var_beta  # Default: color only, symbol is not used
+        symbol_var_beta = color_var_beta
 
     fig = go.Figure()
     palette = px.colors.qualitative.Dark24
     color_map = {g: palette[i % len(palette)] for i, g in enumerate(coords[color_var_beta].unique())}
     symbol_types = ['circle', 'triangle-up', 'square', 'star', 'diamond', 'cross', 'x', 'triangle-down']
-    # Para interacción opcional, sino sólo color
+
     if use_interaction_beta and symbol_var_beta and symbol_var_beta != color_var_beta:
         symbol_vals = {}
         for i, val in enumerate(coords[symbol_var_beta].unique()):
@@ -130,7 +127,6 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
                     hoverinfo="skip"
                 ))
     else:
-        # Solo color, sin símbolo adicional
         for i, (group, group_df) in enumerate(coords.groupby(color_var_beta)):
             fig.add_trace(go.Scatter(
                 x=group_df["NMDS1"], y=group_df["NMDS2"],
@@ -164,22 +160,33 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # PERMANOVA - verificación robusta y compatible con scikit-bio actual
+    # PERMANOVA: robusto para dict y DataFrame, nunca usa 'denominator'
     if color_var_beta and color_var_beta in metadata.columns:
         try:
             grouping = metadata.loc[coords.index, color_var_beta]
-            # Requiere al menos dos grupos y al menos dos muestras por grupo
             group_counts = grouping.value_counts()
             if grouping.nunique() > 1 and all(group_counts > 1):
                 dm = DistanceMatrix(dist.data, ids=dist.ids)
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
-                r2 = permanova_res['r2'] if 'r2' in permanova_res else None
-                st.caption(
-                    f"PERMANOVA (adonis) para {color_var_beta}: "
-                    f"p = {permanova_res['p-value']:.3g}, "
-                    f"pseudo-F = {permanova_res['test statistic']:.3g}"
-                    + (f", R2 = {r2:.3g}" if r2 is not None else "")
-                )
+                # Si es DataFrame (scikit-bio >=0.5)
+                if hasattr(permanova_res, "loc") and hasattr(permanova_res, "columns"):
+                    row = permanova_res.iloc[0]
+                    pval = row['p-value'] if 'p-value' in row else None
+                    stat = row['test statistic'] if 'test statistic' in row else row['statistic'] if 'statistic' in row else None
+                    r2 = row['r2'] if 'r2' in row else None
+                else:
+                    # dict (version vieja)
+                    pval = permanova_res.get('p-value')
+                    stat = permanova_res.get('test statistic', permanova_res.get('statistic'))
+                    r2 = permanova_res.get('r2')
+                msg = f"PERMANOVA (adonis) para {color_var_beta}: "
+                if pval is not None:
+                    msg += f"p = {pval:.3g}, "
+                if stat is not None:
+                    msg += f"pseudo-F = {stat:.3g}"
+                if r2 is not None:
+                    msg += f", R2 = {r2:.3g}"
+                st.caption(msg)
             else:
                 st.caption("PERMANOVA requiere al menos 2 grupos con más de 1 muestra cada uno.")
         except Exception as e:
@@ -197,7 +204,6 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
         st.error("No se pudo cargar los archivos correctamente.")
         return
 
-    # Intersección de muestras presentes en ambos archivos
     common_samples = [s for s in otus.columns if s in metadata.index]
     if not common_samples:
         st.error("No hay coincidencias entre los nombres de muestra en la tabla OTU y la metadata.")
@@ -214,7 +220,7 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
         "observed_otus": "OTUs Observados"
     }
     alpha_df = pd.DataFrame(index=common_samples)
-    otus_T = otus.T  # Filas = muestras, columnas = OTUs
+    otus_T = otus.T
     for m in alpha_metrics:
         try:
             alpha_df[alpha_metrics[m]] = alpha_diversity(m, otus_T.values, ids=otus_T.index)
@@ -229,7 +235,6 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
     try:
         otus_T = otus.T
         dist = beta_diversity("braycurtis", otus_T.values, ids=otus_T.index)
-        # NMDS con sklearn (2D)
         mds = MDS(n_components=2, metric=False, dissimilarity='precomputed', random_state=42, n_init=10, max_iter=300)
         nmds_coords = mds.fit_transform(dist.data)
         coords = pd.DataFrame(nmds_coords, index=otus_T.index, columns=["NMDS1", "NMDS2"])
