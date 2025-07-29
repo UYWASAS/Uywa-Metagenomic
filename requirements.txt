@@ -1,7 +1,7 @@
 streamlit
 pandas
-numpy
-plotly
 scikit-bio
 scipy
+numpy
+plotly
 openpyxl
