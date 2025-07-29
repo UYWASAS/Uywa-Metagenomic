@@ -50,7 +50,7 @@ def get_ellipse(x, y, n_std=2.0, num_points=100):
 
 def plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics):
     color_var = st.selectbox("Variable de agrupación", cat_vars, index=0 if cat_vars else None, key="alpha_color")
-    use_interaction = st.checkbox("¿Mostrar interacción entre dos variables?", value=False)
+    use_interaction = st.checkbox("¿Mostrar interacción entre dos variables? (alfa diversidad)", value=False)
     symbol_var = None
     if use_interaction:
         symbol_var = st.selectbox("Variable para interacción (símbolo)", cat_vars, index=1 if len(cat_vars)>1 else 0, key="alpha_symbol")
@@ -84,6 +84,103 @@ def plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics):
                     st.caption(f"Kruskal-Wallis: p = {kw.pvalue:.3g}")
             else:
                 st.caption("No hay replicación suficiente para ANOVA/Kruskal-Wallis.")
+
+def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
+    color_var_beta = st.selectbox("Variable para color NMDS", cat_vars_beta, index=0, key="beta_color")
+    use_interaction_beta = st.checkbox("¿Mostrar interacción entre dos variables? (beta diversidad)", value=False)
+    symbol_var_beta = None
+    if use_interaction_beta:
+        symbol_var_beta = st.selectbox("Variable para símbolo NMDS", cat_vars_beta, index=1 if len(cat_vars_beta)>1 else 0, key="beta_symbol")
+        if symbol_var_beta == color_var_beta:
+            st.info("Selecciona dos variables diferentes para la interacción.")
+    else:
+        symbol_var_beta = color_var_beta  # Default: color only, symbol is not used
+
+    fig = go.Figure()
+    palette = px.colors.qualitative.Dark24
+    color_map = {g: palette[i % len(palette)] for i, g in enumerate(coords[color_var_beta].unique())}
+    symbol_types = ['circle', 'triangle-up', 'square', 'star', 'diamond', 'cross', 'x', 'triangle-down']
+    # Para interacción opcional, sino sólo color
+    if use_interaction_beta and symbol_var_beta and symbol_var_beta != color_var_beta:
+        symbol_vals = {}
+        for i, val in enumerate(coords[symbol_var_beta].unique()):
+            symbol_vals[val] = symbol_types[i % len(symbol_types)]
+        for i, (group, group_df) in enumerate(coords.groupby(color_var_beta)):
+            fig.add_trace(go.Scatter(
+                x=group_df["NMDS1"], y=group_df["NMDS2"],
+                mode="markers",
+                name=str(group),
+                marker=dict(
+                    color=color_map[group],
+                    symbol=[symbol_vals[v] for v in group_df[symbol_var_beta]],
+                    size=14,
+                    line=dict(width=1, color="black")
+                ),
+                customdata=group_df.index,
+                hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>"+color_var_beta+": "+str(group)
+            ))
+            ex, ey = get_ellipse(group_df["NMDS1"].values, group_df["NMDS2"].values)
+            if ex is not None:
+                fig.add_trace(go.Scatter(
+                    x=ex, y=ey,
+                    mode="lines",
+                    line=dict(color=color_map[group], width=2),
+                    name=f"{group} ellipse",
+                    showlegend=False,
+                    hoverinfo="skip"
+                ))
+    else:
+        # Solo color, sin símbolo adicional
+        for i, (group, group_df) in enumerate(coords.groupby(color_var_beta)):
+            fig.add_trace(go.Scatter(
+                x=group_df["NMDS1"], y=group_df["NMDS2"],
+                mode="markers",
+                name=str(group),
+                marker=dict(
+                    color=color_map[group],
+                    size=14,
+                    line=dict(width=1, color="black")
+                ),
+                customdata=group_df.index,
+                hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>"+color_var_beta+": "+str(group)
+            ))
+            ex, ey = get_ellipse(group_df["NMDS1"].values, group_df["NMDS2"].values)
+            if ex is not None:
+                fig.add_trace(go.Scatter(
+                    x=ex, y=ey,
+                    mode="lines",
+                    line=dict(color=color_map[group], width=2),
+                    name=f"{group} ellipse",
+                    showlegend=False,
+                    hoverinfo="skip"
+                ))
+    fig.update_layout(
+        xaxis_title="NMDS1",
+        yaxis_title="NMDS2",
+        legend_title=color_var_beta,
+        title="NMDS Bray-Curtis con elipses de grupo",
+        width=800,
+        height=600
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # PERMANOVA - verificación robusta
+    if color_var_beta and color_var_beta in metadata.columns:
+        try:
+            grouping = metadata.loc[coords.index, color_var_beta]
+            if grouping.nunique() > 1 and all(grouping.value_counts() > 1):
+                dm = DistanceMatrix(dist.data, ids=dist.ids)
+                permanova_res = permanova(dm, grouping=grouping, permutations=999)
+                st.caption(
+                    f"PERMANOVA (adonis) para {color_var_beta}: "
+                    f"p = {permanova_res['p-value']:.3g}, "
+                    f"pseudo-F = {permanova_res['test statistic']:.3g}, "
+                    f"R2 = {permanova_res['test statistic']/permanova_res['denominator']:.3g}"
+                )
+            else:
+                st.caption("PERMANOVA requiere al menos 2 grupos con más de 1 muestra cada uno.")
+        except Exception as e:
+            st.caption(f"No se pudo calcular PERMANOVA: {e}")
 
 def diversity_tab(otus_file, taxonomy_file, metadata_file):
     st.header("Análisis de Diversidad Alfa y Beta")
@@ -124,6 +221,21 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
     cat_vars = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
     plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics)
 
+    # =================== DIVERSIDAD BETA (NMDS + elipses) ===================
+    st.subheader("Diversidad Beta (NMDS Bray-Curtis + Elipses)")
+    try:
+        otus_T = otus.T
+        dist = beta_diversity("braycurtis", otus_T.values, ids=otus_T.index)
+        # NMDS con sklearn (2D)
+        mds = MDS(n_components=2, metric=False, dissimilarity='precomputed', random_state=42, n_init=10, max_iter=300)
+        nmds_coords = mds.fit_transform(dist.data)
+        coords = pd.DataFrame(nmds_coords, index=otus_T.index, columns=["NMDS1", "NMDS2"])
+        coords = coords.join(metadata, how="left")
+        cat_vars_beta = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
+        plot_beta_diversity(coords, metadata, dist, cat_vars_beta)
+    except Exception as e:
+        st.warning(f"No se pudo calcular NMDS Bray-Curtis: {e}")
+
     # =================== CURVAS DE RAREFACCIÓN ===================
     st.subheader("Curvas de Rarefacción (experimental)")
     sample_sel = st.selectbox("Muestra para rarefacción", common_samples)
@@ -138,71 +250,3 @@ def diversity_tab(otus_file, taxonomy_file, metadata_file):
             fig.add_trace(go.Scatter(x=depths, y=values, mode="lines+markers"))
             fig.update_layout(title=f"Rarefacción: {sample_sel}", xaxis_title="Profundidad", yaxis_title="OTUs Observados")
             st.plotly_chart(fig, use_container_width=True)
-
-    # =================== DIVERSIDAD BETA (NMDS + elipses) ===================
-    st.subheader("Diversidad Beta (NMDS Bray-Curtis + Elipses)")
-    try:
-        otus_T = otus.T
-        dist = beta_diversity("braycurtis", otus_T.values, ids=otus_T.index)
-        # NMDS con sklearn (2D)
-        mds = MDS(n_components=2, metric=False, dissimilarity='precomputed', random_state=42, n_init=10, max_iter=300)
-        nmds_coords = mds.fit_transform(dist.data)
-        coords = pd.DataFrame(nmds_coords, index=otus_T.index, columns=["NMDS1", "NMDS2"])
-        coords = coords.join(metadata, how="left")
-        # Selección de variables para color y símbolo
-        cat_vars_beta = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
-        color_var_beta = st.selectbox("Variable para color NMDS", cat_vars_beta, index=0, key="beta_color")
-        symbol_var_beta = st.selectbox("Variable para símbolo NMDS", cat_vars_beta, index=1 if len(cat_vars_beta)>1 else 0, key="beta_symbol")
-
-        fig = go.Figure()
-        palette = px.colors.qualitative.Dark24
-        color_map = {g: palette[i % len(palette)] for i, g in enumerate(coords[color_var_beta].unique())}
-        symbol_types = ['circle', 'triangle-up', 'square', 'star', 'diamond', 'cross', 'x', 'triangle-down']
-        symbol_vals = {}
-        for i, val in enumerate(coords[symbol_var_beta].unique()):
-            symbol_vals[val] = symbol_types[i % len(symbol_types)]
-        for i, (group, group_df) in enumerate(coords.groupby(color_var_beta)):
-            fig.add_trace(go.Scatter(
-                x=group_df["NMDS1"], y=group_df["NMDS2"],
-                mode="markers",
-                name=str(group),
-                marker=dict(
-                    color=color_map[group],
-                    symbol=[symbol_vals[v] for v in group_df[symbol_var_beta]],
-                    size=14,
-                    line=dict(width=1, color="black")
-                ),
-                customdata=group_df.index,
-                hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>"+color_var_beta+": "+str(group)
-            ))
-            ex, ey = get_ellipse(group_df["NMDS1"].values, group_df["NMDS2"].values)
-            if ex is not None:
-                fig.add_trace(go.Scatter(
-                    x=ex, y=ey,
-                    mode="lines",
-                    line=dict(color=color_map[group], width=2),
-                    name=f"{group} ellipse",
-                    showlegend=False,
-                    hoverinfo="skip"
-                ))
-        fig.update_layout(
-            xaxis_title="NMDS1",
-            yaxis_title="NMDS2",
-            legend_title=color_var_beta,
-            title="NMDS Bray-Curtis con elipses de grupo",
-            width=800,
-            height=600
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-        # PERMANOVA
-        if color_var_beta:
-            try:
-                dm = DistanceMatrix(dist.data, ids=dist.ids)
-                permanova_res = permanova(dm, grouping=coords[color_var_beta], permutations=999)
-                st.caption(f"PERMANOVA (adonis) para {color_var_beta}: p = {permanova_res['p-value']:.3g}, pseudo-F = {permanova_res['test statistic']:.3g}, R2 = {permanova_res['test statistic']/permanova_res['denominator']:.3g}")
-            except Exception as e:
-                st.caption(f"No se pudo calcular PERMANOVA: {e}")
-
-    except Exception as e:
-        st.warning(f"No se pudo calcular NMDS Bray-Curtis: {e}")
