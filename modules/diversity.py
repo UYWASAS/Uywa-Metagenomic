@@ -160,7 +160,7 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # PERMANOVA: robusto para dict y DataFrame, nunca usa 'denominator'
+    # PERMANOVA: extremadamente robusto para dict, DataFrame, objeto
     if color_var_beta and color_var_beta in metadata.columns:
         try:
             grouping = metadata.loc[coords.index, color_var_beta]
@@ -168,17 +168,31 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
             if grouping.nunique() > 1 and all(group_counts > 1):
                 dm = DistanceMatrix(dist.data, ids=dist.ids)
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
-                # Si es DataFrame (scikit-bio >=0.5)
-                if hasattr(permanova_res, "loc") and hasattr(permanova_res, "columns"):
+
+                # DEBUG: descomenta esto para ver el resultado crudo
+                # st.write("PERMANOVA result (debug):", permanova_res)
+
+                pval = stat = r2 = None
+                # DataFrame (scikit-bio >=0.5)
+                if hasattr(permanova_res, "iloc") and hasattr(permanova_res, "columns"):
                     row = permanova_res.iloc[0]
                     pval = row['p-value'] if 'p-value' in row else None
-                    stat = row['test statistic'] if 'test statistic' in row else row['statistic'] if 'statistic' in row else None
+                    stat = row['test statistic'] if 'test statistic' in row else (row['statistic'] if 'statistic' in row else None)
                     r2 = row['r2'] if 'r2' in row else None
-                else:
-                    # dict (version vieja)
+                # dict
+                elif isinstance(permanova_res, dict):
                     pval = permanova_res.get('p-value')
                     stat = permanova_res.get('test statistic', permanova_res.get('statistic'))
                     r2 = permanova_res.get('r2')
+                # objeto con atributos
+                else:
+                    try:
+                        pval = getattr(permanova_res, 'p_value', None)
+                        stat = getattr(permanova_res, 'test_statistic', getattr(permanova_res, 'statistic', None))
+                        r2 = getattr(permanova_res, 'r2', None)
+                    except Exception:
+                        pass
+
                 msg = f"PERMANOVA (adonis) para {color_var_beta}: "
                 if pval is not None:
                     msg += f"p = {pval:.3g}, "
