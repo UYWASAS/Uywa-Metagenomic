@@ -180,7 +180,7 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
 
             # Prueba manual con subconjunto reducido
             try:
-                test_ids = dist.ids[:5]
+                test_ids = list(dist.ids[:5])
                 test_dm = DistanceMatrix(dist.data[:5, :5], ids=test_ids)
                 test_grouping = grouping.loc[test_ids]
                 st.write("Test grouping:", test_grouping)
