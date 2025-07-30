@@ -164,9 +164,12 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
     if color_var_beta and color_var_beta in metadata.columns:
         try:
             grouping = metadata.loc[coords.index, color_var_beta]
+
+            # Forzar los valores a str para máxima compatibilidad con scikit-bio y evitar bugs
+            grouping = grouping.astype(str)
+
             group_counts = grouping.value_counts()
 
-            # Imprime grouping y valores únicos para depuración
             st.write("Grouping:", grouping)
             st.write("Valores únicos en grouping:", list(grouping.unique()))
 
