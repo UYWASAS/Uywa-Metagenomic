@@ -172,11 +172,13 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
             st.write("Grouping unique values (después):", grouping.unique())
             st.write("Grouping as list:", list(grouping))
 
-            # NUEVO: Debug de índices y matriz de distancias
+            # Debug de índices y matriz de distancias
             st.write("IDs en dist:", dist.ids)
             st.write("Índice en grouping:", list(grouping.index))
             st.write("Shape de dist.data:", dist.data.shape)
             st.write("dist.data:", dist.data)
+            st.write("¿Hay NaN en dist.data?", np.isnan(dist.data).any())
+            st.write("¿Hay NaN en grouping?", grouping.isnull().any())
 
             # Prueba manual con subconjunto reducido
             try:
@@ -192,10 +194,20 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
             # PERMANOVA real (solo si hay >1 grupo y cada grupo >1 muestra)
             if grouping.nunique() > 1 and all(group_counts > 1):
                 dm = DistanceMatrix(dist.data.copy(order="C"), ids=dist.ids)
+                st.write("¿Hay NaN en dist.data (completo)?", np.isnan(dist.data).any())
+                st.write("¿Hay NaN en grouping (completo)?", grouping.isnull().any())
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
                 st.write("PERMANOVA result (type):", type(permanova_res))
                 st.write("PERMANOVA result (value):", permanova_res)
+                # Extracción robusta
                 pval = stat = r2 = None
+                if hasattr(permanova_res, "__getitem__"):
+                    try:
+                        pval = permanova_res['p-value']
+                        stat = permanova_res['test statistic']
+                        r2 = permanova_res.get('r2', None)
+                    except Exception:
+                        pass
                 if hasattr(permanova_res, "iloc") and hasattr(permanova_res, "columns"):
                     row = permanova_res.iloc[0]
                     pval = row.get('p-value', row.get('p_value', None)) if hasattr(row, 'get') else row['p-value'] if 'p-value' in row else None
