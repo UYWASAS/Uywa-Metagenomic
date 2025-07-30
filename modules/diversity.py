@@ -40,7 +40,7 @@ def get_ellipse(x, y, n_std=2.0, num_points=100):
     theta = np.degrees(np.arctan2(*vecs[:,0][::-1]))
     width, height = 2 * n_std * np.sqrt(vals)
     t = np.linspace(0, 2 * np.pi, num_points)
-    ellipse = np.array([width/2 * np.cos(t) , height/2 * np.sin(t)])
+    ellipse = np.array([width/2 * np.cos(t), height/2 * np.sin(t)])
     R = np.array([[np.cos(np.radians(theta)), -np.sin(np.radians(theta))],
                   [np.sin(np.radians(theta)),  np.cos(np.radians(theta))]])
     ellipse_rot = R @ ellipse
@@ -52,7 +52,7 @@ def plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics):
     use_interaction = st.checkbox("¿Mostrar interacción entre dos variables? (alfa diversidad)", value=False)
     symbol_var = None
     if use_interaction:
-        symbol_var = st.selectbox("Variable para interacción (símbolo)", cat_vars, index=1 if len(cat_vars)>1 else 0, key="alpha_symbol")
+        symbol_var = st.selectbox("Variable para interacción (símbolo)", cat_vars, index=1 if len(cat_vars) > 1 else 0, key="alpha_symbol")
         if symbol_var == color_var:
             st.info("Selecciona dos variables diferentes para la interacción.")
 
@@ -71,7 +71,7 @@ def plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics):
                     title=f"{metric}: interacción {color_var} y {symbol_var}"
                 )
                 st.plotly_chart(fig_scatter, use_container_width=True)
-            groups = [alpha_df[alpha_df[color_var]==g][metric].dropna() for g in alpha_df[color_var].unique()]
+            groups = [alpha_df[alpha_df[color_var] == g][metric].dropna() for g in alpha_df[color_var].unique()]
             if all(len(g) > 1 for g in groups) and len(groups) > 1:
                 try:
                     fval, pval = f_oneway(*groups)
@@ -87,7 +87,7 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
     use_interaction_beta = st.checkbox("¿Mostrar interacción entre dos variables? (beta diversidad)", value=False)
     symbol_var_beta = None
     if use_interaction_beta:
-        symbol_var_beta = st.selectbox("Variable para símbolo NMDS", cat_vars_beta, index=1 if len(cat_vars_beta)>1 else 0, key="beta_symbol")
+        symbol_var_beta = st.selectbox("Variable para símbolo NMDS", cat_vars_beta, index=1 if len(cat_vars_beta) > 1 else 0, key="beta_symbol")
         if symbol_var_beta == color_var_beta:
             st.info("Selecciona dos variables diferentes para la interacción.")
     else:
@@ -114,7 +114,7 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
                     line=dict(width=1, color="black")
                 ),
                 customdata=group_df.index,
-                hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>"+color_var_beta+": "+str(group)
+                hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>" + color_var_beta + ": " + str(group)
             ))
             ex, ey = get_ellipse(group_df["NMDS1"].values, group_df["NMDS2"].values)
             if ex is not None:
@@ -138,7 +138,7 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
                     line=dict(width=1, color="black")
                 ),
                 customdata=group_df.index,
-                hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>"+color_var_beta+": "+str(group)
+                hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>" + color_var_beta + ": " + str(group)
             ))
             ex, ey = get_ellipse(group_df["NMDS1"].values, group_df["NMDS2"].values)
             if ex is not None:
@@ -160,26 +160,41 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # PERMANOVA: limpieza y debug para evitar errores por caracteres
+    # PERMANOVA debug y limpieza
     if color_var_beta and color_var_beta in metadata.columns:
         try:
             grouping = metadata.loc[coords.index, color_var_beta]
             group_counts = grouping.value_counts()
-            # Debug antes de limpiar
             st.write("PERMANOVA grouping (antes de limpiar):", grouping)
             st.write("Grouping unique values (antes):", grouping.unique())
-            # Limpia caracteres problemáticos
             grouping = grouping.astype(str).str.replace(r"[^a-zA-Z0-9_\-]", "_", regex=True)
             st.write("PERMANOVA grouping (después de limpiar):", grouping)
             st.write("Grouping unique values (después):", grouping.unique())
             st.write("Grouping as list:", list(grouping))
-            # PERMANOVA solo si hay más de un grupo y cada grupo tiene más de 1 muestra
+
+            # NUEVO: Debug de índices y matriz de distancias
+            st.write("IDs en dist:", dist.ids)
+            st.write("Índice en grouping:", list(grouping.index))
+            st.write("Shape de dist.data:", dist.data.shape)
+            st.write("dist.data:", dist.data)
+
+            # Prueba manual con subconjunto reducido
+            try:
+                test_ids = dist.ids[:5]
+                test_dm = DistanceMatrix(dist.data[:5, :5], ids=test_ids)
+                test_grouping = grouping.loc[test_ids]
+                st.write("Test grouping:", test_grouping)
+                test_result = permanova(test_dm, grouping=test_grouping, permutations=99)
+                st.write("Test PERMANOVA:", test_result)
+            except Exception as e:
+                st.write("Error en test PERMANOVA:", e)
+
+            # PERMANOVA real (solo si hay >1 grupo y cada grupo >1 muestra)
             if grouping.nunique() > 1 and all(group_counts > 1):
                 dm = DistanceMatrix(dist.data, ids=dist.ids)
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
                 st.write("PERMANOVA result (type):", type(permanova_res))
                 st.write("PERMANOVA result (value):", permanova_res)
-                # Intenta extraer p-valor, pseudo-F y R2 (ajusta aquí según lo que veas en el output)
                 pval = stat = r2 = None
                 if hasattr(permanova_res, "iloc") and hasattr(permanova_res, "columns"):
                     row = permanova_res.iloc[0]
