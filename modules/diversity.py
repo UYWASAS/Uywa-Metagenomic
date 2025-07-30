@@ -160,83 +160,60 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # PERMANOVA debug y limpieza
+    # PERMANOVA robusto y depuración
     if color_var_beta and color_var_beta in metadata.columns:
         try:
             grouping = metadata.loc[coords.index, color_var_beta]
             group_counts = grouping.value_counts()
-            st.write("PERMANOVA grouping (antes de limpiar):", grouping)
-            st.write("Grouping unique values (antes):", grouping.unique())
-            grouping = grouping.astype(str).str.replace(r"[^a-zA-Z0-9_\-]", "_", regex=True)
-            st.write("PERMANOVA grouping (después de limpiar):", grouping)
-            st.write("Grouping unique values (después):", grouping.unique())
-            st.write("Grouping as list:", list(grouping))
 
-            # Debug de índices y matriz de distancias
-            st.write("IDs en dist:", dist.ids)
-            st.write("Índice en grouping:", list(grouping.index))
-            st.write("Shape de dist.data:", dist.data.shape)
-            st.write("dist.data:", dist.data)
-            st.write("¿Hay NaN en dist.data?", np.isnan(dist.data).any())
-            st.write("¿Hay NaN en grouping?", grouping.isnull().any())
+            # Imprime grouping y valores únicos para depuración
+            st.write("Grouping:", grouping)
+            st.write("Valores únicos en grouping:", list(grouping.unique()))
 
-            # Valores extra para revisar contenido
-            st.write("Valores únicos en grouping:", grouping.unique())
-            st.write("Valores mínimos/máximos en dist.data:", np.nanmin(dist.data), np.nanmax(dist.data))
-
-            # Prueba manual con subconjunto reducido
-            try:
-                test_ids = list(dist.ids[:5])
-                test_dm = DistanceMatrix(dist.data[:5, :5].copy(order="C"), ids=test_ids)
-                test_grouping = grouping.loc[test_ids]
-                st.write("Test grouping:", test_grouping)
-                test_result = permanova(test_dm, grouping=test_grouping, permutations=99)
-                st.write("Test PERMANOVA:", test_result)
-            except Exception as e:
-                st.write("Error en test PERMANOVA:", e)
-
-            # PERMANOVA real (solo si hay >1 grupo y cada grupo >1 muestra)
-            if grouping.nunique() > 1 and all(group_counts > 1):
+            if grouping.nunique() < 2:
+                st.warning("PERMANOVA requiere al menos dos grupos diferentes en la variable de agrupación seleccionada.")
+            else:
                 dm = DistanceMatrix(dist.data.copy(order="C"), ids=dist.ids)
                 st.write("¿Hay NaN en dist.data (completo)?", np.isnan(dist.data).any())
                 st.write("¿Hay NaN en grouping (completo)?", grouping.isnull().any())
-                st.write("Valores únicos en grouping (completo):", grouping.unique())
+                st.write("Valores únicos en grouping (completo):", list(grouping.unique()))
                 st.write("Valores mínimos/máximos en dist.data (completo):", np.nanmin(dist.data), np.nanmax(dist.data))
-                permanova_res = permanova(dm, grouping=grouping, permutations=999)
-                st.write("PERMANOVA result (type):", type(permanova_res))
-                st.write("PERMANOVA result (value):", permanova_res)
-                # Extracción robusta
-                pval = stat = r2 = None
-                if hasattr(permanova_res, "__getitem__"):
-                    try:
-                        pval = permanova_res['p-value']
-                        stat = permanova_res['test statistic']
-                        r2 = permanova_res.get('r2', None)
-                    except Exception:
-                        pass
-                if hasattr(permanova_res, "iloc") and hasattr(permanova_res, "columns"):
-                    row = permanova_res.iloc[0]
-                    pval = row.get('p-value', row.get('p_value', None)) if hasattr(row, 'get') else row['p-value'] if 'p-value' in row else None
-                    stat = row.get('test statistic', row.get('statistic', None)) if hasattr(row, 'get') else row['test statistic'] if 'test statistic' in row else (row['statistic'] if 'statistic' in row else None)
-                    r2 = row.get('r2', None) if hasattr(row, 'get') else row['r2'] if 'r2' in row else None
-                elif isinstance(permanova_res, dict):
-                    pval = permanova_res.get('p-value', permanova_res.get('p_value'))
-                    stat = permanova_res.get('test statistic', permanova_res.get('statistic'))
-                    r2 = permanova_res.get('r2')
-                else:
-                    try:
-                        pval = getattr(permanova_res, 'p_value', None)
-                        stat = getattr(permanova_res, 'test_statistic', getattr(permanova_res, 'statistic', None))
-                        r2 = getattr(permanova_res, 'r2', None)
-                    except Exception:
-                        pass
-                msg = f"PERMANOVA (adonis) para {color_var_beta}: "
-                msg += f"p = {pval}, " if pval is not None else "p = None, "
-                msg += f"pseudo-F = {stat}" if stat is not None else "pseudo-F = None"
-                msg += f", R2 = {r2}" if r2 is not None else ""
-                st.caption(msg)
-            else:
-                st.caption("PERMANOVA requiere al menos 2 grupos con más de 1 muestra cada uno.")
+                try:
+                    permanova_res = permanova(dm, grouping=grouping, permutations=999)
+                    st.write("PERMANOVA result (type):", type(permanova_res))
+                    st.write("PERMANOVA result (value):", permanova_res)
+                    # Extracción robusta de resultados
+                    pval = stat = r2 = None
+                    if hasattr(permanova_res, "__getitem__"):
+                        try:
+                            pval = permanova_res['p-value']
+                            stat = permanova_res['test statistic']
+                            r2 = permanova_res.get('r2', None)
+                        except Exception:
+                            pass
+                    if hasattr(permanova_res, "iloc") and hasattr(permanova_res, "columns"):
+                        row = permanova_res.iloc[0]
+                        pval = row.get('p-value', row.get('p_value', None)) if hasattr(row, 'get') else row['p-value'] if 'p-value' in row else None
+                        stat = row.get('test statistic', row.get('statistic', None)) if hasattr(row, 'get') else row['test statistic'] if 'test statistic' in row else (row['statistic'] if 'statistic' in row else None)
+                        r2 = row.get('r2', None) if hasattr(row, 'get') else row['r2'] if 'r2' in row else None
+                    elif isinstance(permanova_res, dict):
+                        pval = permanova_res.get('p-value', permanova_res.get('p_value'))
+                        stat = permanova_res.get('test statistic', permanova_res.get('statistic'))
+                        r2 = permanova_res.get('r2')
+                    else:
+                        try:
+                            pval = getattr(permanova_res, 'p_value', None)
+                            stat = getattr(permanova_res, 'test_statistic', getattr(permanova_res, 'statistic', None))
+                            r2 = getattr(permanova_res, 'r2', None)
+                        except Exception:
+                            pass
+                    msg = f"PERMANOVA (adonis) para {color_var_beta}: "
+                    msg += f"p = {pval}, " if pval is not None else "p = None, "
+                    msg += f"pseudo-F = {stat}" if stat is not None else "pseudo-F = None"
+                    msg += f", R2 = {r2}" if r2 is not None else ""
+                    st.caption(msg)
+                except Exception as e:
+                    st.caption(f"No se pudo calcular PERMANOVA: {e}")
         except Exception as e:
             st.caption(f"No se pudo calcular PERMANOVA: {e}")
 
