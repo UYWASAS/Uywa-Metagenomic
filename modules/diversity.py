@@ -168,6 +168,8 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
             if grouping.nunique() > 1 and all(group_counts > 1):
                 dm = DistanceMatrix(dist.data, ids=dist.ids)
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
+               st.write("PERMANOVA result (type):", type(permanova_res))
+               st.write("PERMANOVA result (value):", permanova_res)
 
                 pval = stat = r2 = None
                 # DataFrame (scikit-bio >=0.5)
