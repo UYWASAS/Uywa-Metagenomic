@@ -71,12 +71,30 @@ with st.sidebar:
         st.session_state.clear()
         st.experimental_rerun()
 
-# ======================== BLOQUE 3: LOGIN CON ARCHIVO AUTH.PY ROBUSTO ========================
 # ======================== BLOQUE 3: LOGIN ========================
 from auth import USERS_DB  # <-- IMPORTA TU ARCHIVO AUTH.PY AQUÍ
 
 def login():
-@@ -94,12 +98,8 @@
+    st.title("Iniciar sesión")
+    username = st.text_input("Usuario", key="usuario_login")
+    password = st.text_input("Contraseña", type="password", key="password_login")
+    login_btn = st.button("Entrar", key="entrar_login")
+    if login_btn:
+        user = USERS_DB.get(username.strip().lower())
+        if user and user["password"] == password:
+            st.session_state["logged_in"] = True
+            st.session_state["usuario"] = username.strip()
+            st.session_state["user"] = user
+            st.success(f"Bienvenido, {user['name']}!")
+            st.rerun()
+        else:
+            st.error("Usuario o contraseña incorrectos.")
+    if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
+        st.stop()
+
+if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
+    login()
+
 USER_KEY = f"uywa_mbio_{st.session_state['usuario']}"
 st.markdown(f"<div style='text-align:right; font-size:13px;'>👤 Usuario: <b>{st.session_state['usuario']}</b></div>", unsafe_allow_html=True)
 
@@ -85,15 +103,18 @@ st.markdown(f"<div style='text-align:right; font-size:13px;'>👤 Usuario: <b>{s
 
 # ======================== BLOQUE 5: TITULO, UPLOADERS Y TABS PRINCIPALES ========================
 st.title("Gestión y Análisis de Microbiota 16S")
-
 tabs = st.tabs(["Carga de Archivos", "Diversidad", "Análisis Estadístico", "Visualización Taxonómica"])
 
 # ======================== BLOQUE 6: CARGA DE ARCHIVOS EN PESTAÑA 0 ========================
-@@ -112,37 +112,37 @@
+with tabs[0]:
+    st.header("Carga de Archivos de Microbiota")
+    otus_file = st.file_uploader("Tabla OTUs/ASVs (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="otus_upload_tab")
+    taxonomy_file = st.file_uploader("Taxonomía (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="tax_upload_tab")
+    metadata_file = st.file_uploader("Metadata (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="meta_upload_tab")
+
     # Muestra información básica si los archivos están cargados
     if otus_file:
         df = load_table(otus_file)
-        st.success(f"OTUs/ASVs: {df.shape[0]} muestras x {df.shape[1]} OTUs")
         st.success(f"OTUs/ASVs: {df.shape[0]} filas x {df.shape[1]} columnas")
     if taxonomy_file:
         df = load_table(taxonomy_file)
