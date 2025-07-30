@@ -1,148 +1,285 @@
-# ======================== BLOQUE 1: IMPORTS Y UTILIDADES ========================
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
 import plotly.express as px
+import plotly.graph_objects as go
+from skbio.diversity import alpha_diversity, beta_diversity
+from skbio.stats.distance import permanova, DistanceMatrix
+from scipy.stats import kruskal, f_oneway
+from sklearn.manifold import MDS
+from modules.utils import load_table
+import numpy as np
 
-from modules.diversity import diversity_tab
-from modules.stats import stats_tab
-from modules.taxonomy import taxonomy_tab
-from modules.utils import load_table, safe_float, clean_state
+def rarefaction_curve(sample, steps=10):
+    nseqs = int(sample.sum())
+    depths = np.linspace(10, nseqs, steps, dtype=int)
+    values = []
+    population = []
+    for otu, count in sample.items():
+        if count > 0:
+            population.extend([otu] * int(count))
+    population = np.array(population)
+    for d in depths:
+        if d > len(population) or d == 0:
+            values.append(np.nan)
+            continue
+        outs = []
+        for _ in range(10):
+            subsample = np.random.choice(population, d, replace=False)
+            outs.append(len(np.unique(subsample)))
+        values.append(np.mean(outs))
+    return depths, values
 
-# ======================== BLOQUE 2: ESTILO Y LOGO ========================
-st.set_page_config(page_title="Microbiota 16S - UYWA", layout="wide")
-st.markdown("""
-    <style>
-    html, body, .stApp, .main, .block-container {
-        background: linear-gradient(120deg, #f3f6fa 0%, #e3ecf7 100%) !important;
-        background-color: #f3f6fa !important;
-        font-size: 14px !important;
-        font-family: 'Montserrat', Arial, sans-serif !important;
-    }
-    h1, h2, h3, h4, h5, h6 {
-        font-size: 1.2em !important;
-        font-family: 'Montserrat', Arial, sans-serif !important;
-    }
-    .stMarkdown, .stText, .stDataFrame, .stTable, .stPlotlyChart, .stSelectbox, .stMultiSelect, .stNumberInput, .stTextInput, .stButton, .stFileUploader {
-        font-size: 15px !important;
-    }
-    section[data-testid="stSidebar"] {
-        background: #19345c !important;
-        color: #fff !important;
-    }
-    section[data-testid="stSidebar"] * {
-        color: #fff !important;
-    }
-    .block-container {
-        background: transparent !important;
-    }
-    .stFileUploader, .stMultiSelect, .stSelectbox, .stNumberInput, .stTextInput {
-        background-color: #f4f8fa !important;
-        border-radius: 6px !important;
-        border: none !important;
-        box-shadow: none !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+def get_ellipse(x, y, n_std=2.0, num_points=100):
+    if len(x) < 3:
+        return None, None
+    cov = np.cov(x, y)
+    vals, vecs = np.linalg.eigh(cov)
+    order = vals.argsort()[::-1]
+    vals = vals[order]
+    vecs = vecs[:, order]
+    theta = np.degrees(np.arctan2(*vecs[:,0][::-1]))
+    width, height = 2 * n_std * np.sqrt(vals)
+    t = np.linspace(0, 2 * np.pi, num_points)
+    ellipse = np.array([width/2 * np.cos(t), height/2 * np.sin(t)])
+    R = np.array([[np.cos(np.radians(theta)), -np.sin(np.radians(theta))],
+                  [np.sin(np.radians(theta)),  np.cos(np.radians(theta))]])
+    ellipse_rot = R @ ellipse
+    x0, y0 = np.mean(x), np.mean(y)
+    return ellipse_rot[0] + x0, ellipse_rot[1] + y0
 
-with st.sidebar:
-    st.image("assets/logo.png", width=110)
-    st.markdown(
-        """
-        <div style='text-align: center; margin-bottom:10px;'>
-            <div style='font-size:28px;font-family:Montserrat,Arial;color:#fff; margin-top: 10px;letter-spacing:1px; font-weight:700; line-height:1.1;'>
-                UYWA-<br>MICROBIOTA<sup>®</sup>
-            </div>
-            <div style='font-size:14px;color:#fff; margin-top: 5px; font-family:Montserrat,Arial; line-height: 1.1;'>
-                Análisis Interactivo 16S
-            </div>
-            <hr style='border-top:1px solid #2e4771; margin: 18px 0;'>
-            <div style='font-size:13px;color:#fff; margin-top: 8px;'>
-                <b>Contacto:</b> uywasas@gmail.com<br>
-                Derechos reservados © 2025
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
+def plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics):
+    color_var = st.selectbox("Variable de agrupación", cat_vars, index=0 if cat_vars else None, key="alpha_color")
+    use_interaction = st.checkbox("¿Mostrar interacción entre dos variables? (alfa diversidad)", value=False)
+    symbol_var = None
+    if use_interaction:
+        symbol_var = st.selectbox("Variable para interacción (símbolo)", cat_vars, index=1 if len(cat_vars) > 1 else 0, key="alpha_symbol")
+        if symbol_var == color_var:
+            st.info("Selecciona dos variables diferentes para la interacción.")
+
+    tabs = st.tabs(list(alpha_metrics.values()))
+    for i, metric in enumerate(alpha_metrics.values()):
+        with tabs[i]:
+            st.markdown(f"**{metric}**")
+            fig = px.box(
+                alpha_df, x=color_var, y=metric, color=color_var, points="all",
+                title=f"{metric} por grupo"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            if use_interaction and symbol_var and symbol_var != color_var:
+                fig_scatter = px.scatter(
+                    alpha_df, x=symbol_var, y=metric, color=color_var, symbol=symbol_var,
+                    title=f"{metric}: interacción {color_var} y {symbol_var}"
+                )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+            groups = [alpha_df[alpha_df[color_var] == g][metric].dropna() for g in alpha_df[color_var].unique()]
+            if all(len(g) > 1 for g in groups) and len(groups) > 1:
+                try:
+                    fval, pval = f_oneway(*groups)
+                    st.caption(f"ANOVA: p = {pval:.3g}")
+                except Exception:
+                    kw = kruskal(*groups)
+                    st.caption(f"Kruskal-Wallis: p = {kw.pvalue:.3g}")
+            else:
+                st.caption("No hay replicación suficiente para ANOVA/Kruskal-Wallis.")
+
+def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
+    color_var_beta = st.selectbox("Variable para color NMDS", cat_vars_beta, index=0, key="beta_color")
+    use_interaction_beta = st.checkbox("¿Mostrar interacción entre dos variables? (beta diversidad)", value=False)
+    symbol_var_beta = None
+    if use_interaction_beta:
+        symbol_var_beta = st.selectbox("Variable para símbolo NMDS", cat_vars_beta, index=1 if len(cat_vars_beta) > 1 else 0, key="beta_symbol")
+        if symbol_var_beta == color_var_beta:
+            st.info("Selecciona dos variables diferentes para la interacción.")
+    else:
+        symbol_var_beta = color_var_beta
+
+    fig = go.Figure()
+    palette = px.colors.qualitative.Dark24
+    color_map = {g: palette[i % len(palette)] for i, g in enumerate(coords[color_var_beta].unique())}
+    symbol_types = ['circle', 'triangle-up', 'square', 'star', 'diamond', 'cross', 'x', 'triangle-down']
+
+    if use_interaction_beta and symbol_var_beta and symbol_var_beta != color_var_beta:
+        symbol_vals = {}
+        for i, val in enumerate(coords[symbol_var_beta].unique()):
+            symbol_vals[val] = symbol_types[i % len(symbol_types)]
+        for i, (group, group_df) in enumerate(coords.groupby(color_var_beta)):
+            fig.add_trace(go.Scatter(
+                x=group_df["NMDS1"], y=group_df["NMDS2"],
+                mode="markers",
+                name=str(group),
+                marker=dict(
+                    color=color_map[group],
+                    symbol=[symbol_vals[v] for v in group_df[symbol_var_beta]],
+                    size=14,
+                    line=dict(width=1, color="black")
+                ),
+                customdata=group_df.index,
+                hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>" + color_var_beta + ": " + str(group)
+            ))
+            ex, ey = get_ellipse(group_df["NMDS1"].values, group_df["NMDS2"].values)
+            if ex is not None:
+                fig.add_trace(go.Scatter(
+                    x=ex, y=ey,
+                    mode="lines",
+                    line=dict(color=color_map[group], width=2),
+                    name=f"{group} ellipse",
+                    showlegend=False,
+                    hoverinfo="skip"
+                ))
+    else:
+        for i, (group, group_df) in enumerate(coords.groupby(color_var_beta)):
+            fig.add_trace(go.Scatter(
+                x=group_df["NMDS1"], y=group_df["NMDS2"],
+                mode="markers",
+                name=str(group),
+                marker=dict(
+                    color=color_map[group],
+                    size=14,
+                    line=dict(width=1, color="black")
+                ),
+                customdata=group_df.index,
+                hovertemplate="Sample: %{customdata}<br>NMDS1: %{x:.2f}<br>NMDS2: %{y:.2f}<br>" + color_var_beta + ": " + str(group)
+            ))
+            ex, ey = get_ellipse(group_df["NMDS1"].values, group_df["NMDS2"].values)
+            if ex is not None:
+                fig.add_trace(go.Scatter(
+                    x=ex, y=ey,
+                    mode="lines",
+                    line=dict(color=color_map[group], width=2),
+                    name=f"{group} ellipse",
+                    showlegend=False,
+                    hoverinfo="skip"
+                ))
+    fig.update_layout(
+        xaxis_title="NMDS1",
+        yaxis_title="NMDS2",
+        legend_title=color_var_beta,
+        title="NMDS Bray-Curtis con elipses de grupo",
+        width=800,
+        height=600
     )
-    # Opcional: Botón para cerrar sesión
-    if st.button("Cerrar sesión"):
-        st.session_state.clear()
-        st.experimental_rerun()
+    st.plotly_chart(fig, use_container_width=True)
 
-# ======================== BLOQUE 3: LOGIN ========================
-from auth import USERS_DB  # <-- IMPORTA TU ARCHIVO AUTH.PY AQUÍ
+    # PERMANOVA robusto y depuración
+    if color_var_beta and color_var_beta in metadata.columns:
+        try:
+            grouping = metadata.loc[coords.index, color_var_beta]
+            group_counts = grouping.value_counts()
 
-def login():
-    st.title("Iniciar sesión")
-    username = st.text_input("Usuario", key="usuario_login")
-    password = st.text_input("Contraseña", type="password", key="password_login")
-    login_btn = st.button("Entrar", key="entrar_login")
-    if login_btn:
-        user = USERS_DB.get(username.strip().lower())
-        if user and user["password"] == password:
-            st.session_state["logged_in"] = True
-            st.session_state["usuario"] = username.strip()
-            st.session_state["user"] = user
-            st.success(f"Bienvenido, {user['name']}!")
-            st.rerun()
+            # Imprime grouping y valores únicos para depuración
+            st.write("Grouping:", grouping)
+            st.write("Valores únicos en grouping:", list(grouping.unique()))
+
+            if grouping.nunique() < 2:
+                st.warning("PERMANOVA requiere al menos dos grupos diferentes en la variable de agrupación seleccionada.")
+            else:
+                dm = DistanceMatrix(dist.data.copy(order="C"), ids=dist.ids)
+                st.write("¿Hay NaN en dist.data (completo)?", np.isnan(dist.data).any())
+                st.write("¿Hay NaN en grouping (completo)?", grouping.isnull().any())
+                st.write("Valores únicos en grouping (completo):", list(grouping.unique()))
+                st.write("Valores mínimos/máximos en dist.data (completo):", np.nanmin(dist.data), np.nanmax(dist.data))
+                try:
+                    permanova_res = permanova(dm, grouping=grouping, permutations=999)
+                    st.write("PERMANOVA result (type):", type(permanova_res))
+                    st.write("PERMANOVA result (value):", permanova_res)
+                    # Extracción robusta de resultados
+                    pval = stat = r2 = None
+                    if hasattr(permanova_res, "__getitem__"):
+                        try:
+                            pval = permanova_res['p-value']
+                            stat = permanova_res['test statistic']
+                            r2 = permanova_res.get('r2', None)
+                        except Exception:
+                            pass
+                    if hasattr(permanova_res, "iloc") and hasattr(permanova_res, "columns"):
+                        row = permanova_res.iloc[0]
+                        pval = row.get('p-value', row.get('p_value', None)) if hasattr(row, 'get') else row['p-value'] if 'p-value' in row else None
+                        stat = row.get('test statistic', row.get('statistic', None)) if hasattr(row, 'get') else row['test statistic'] if 'test statistic' in row else (row['statistic'] if 'statistic' in row else None)
+                        r2 = row.get('r2', None) if hasattr(row, 'get') else row['r2'] if 'r2' in row else None
+                    elif isinstance(permanova_res, dict):
+                        pval = permanova_res.get('p-value', permanova_res.get('p_value'))
+                        stat = permanova_res.get('test statistic', permanova_res.get('statistic'))
+                        r2 = permanova_res.get('r2')
+                    else:
+                        try:
+                            pval = getattr(permanova_res, 'p_value', None)
+                            stat = getattr(permanova_res, 'test_statistic', getattr(permanova_res, 'statistic', None))
+                            r2 = getattr(permanova_res, 'r2', None)
+                        except Exception:
+                            pass
+                    msg = f"PERMANOVA (adonis) para {color_var_beta}: "
+                    msg += f"p = {pval}, " if pval is not None else "p = None, "
+                    msg += f"pseudo-F = {stat}" if stat is not None else "pseudo-F = None"
+                    msg += f", R2 = {r2}" if r2 is not None else ""
+                    st.caption(msg)
+                except Exception as e:
+                    st.caption(f"No se pudo calcular PERMANOVA: {e}")
+        except Exception as e:
+            st.caption(f"No se pudo calcular PERMANOVA: {e}")
+
+def diversity_tab(otus_file, taxonomy_file, metadata_file):
+    st.header("Análisis de Diversidad Alfa y Beta")
+    if not otus_file or not metadata_file:
+        st.warning("Por favor, sube la tabla de OTUs/ASVs y la metadata en la pestaña de carga.")
+        return
+
+    otus = load_table(otus_file, index_col="OTU")
+    metadata = load_table(metadata_file, index_col="SampleID")
+    if otus is None or metadata is None:
+        st.error("No se pudo cargar los archivos correctamente.")
+        return
+
+    common_samples = [s for s in otus.columns if s in metadata.index]
+    if not common_samples:
+        st.error("No hay coincidencias entre los nombres de muestra en la tabla OTU y la metadata.")
+        return
+    otus = otus[common_samples]
+    metadata = metadata.loc[common_samples]
+
+    # =================== DIVERSIDAD ALFA ===================
+    st.subheader("Diversidad Alfa")
+    alpha_metrics = {
+        "shannon": "Shannon",
+        "simpson": "Simpson",
+        "chao1": "Chao1",
+        "observed_otus": "OTUs Observados"
+    }
+    alpha_df = pd.DataFrame(index=common_samples)
+    otus_T = otus.T
+    for m in alpha_metrics:
+        try:
+            alpha_df[alpha_metrics[m]] = alpha_diversity(m, otus_T.values, ids=otus_T.index)
+        except Exception:
+            alpha_df[alpha_metrics[m]] = np.nan
+    alpha_df = alpha_df.join(metadata)
+    cat_vars = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
+    plot_alpha_index_tabbed(alpha_df, cat_vars, alpha_metrics)
+
+    # =================== DIVERSIDAD BETA (NMDS + elipses) ===================
+    st.subheader("Diversidad Beta (NMDS Bray-Curtis + Elipses)")
+    try:
+        otus_T = otus.T
+        dist = beta_diversity("braycurtis", otus_T.values, ids=otus_T.index)
+        mds = MDS(n_components=2, metric=False, dissimilarity='precomputed', random_state=42, n_init=10, max_iter=300)
+        nmds_coords = mds.fit_transform(dist.data)
+        coords = pd.DataFrame(nmds_coords, index=otus_T.index, columns=["NMDS1", "NMDS2"])
+        coords = coords.join(metadata, how="left")
+        cat_vars_beta = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
+        plot_beta_diversity(coords, metadata, dist, cat_vars_beta)
+    except Exception as e:
+        st.warning(f"No se pudo calcular NMDS Bray-Curtis: {e}")
+
+    # =================== CURVAS DE RAREFACCIÓN ===================
+    st.subheader("Curvas de Rarefacción (experimental)")
+    sample_sel = st.selectbox("Muestra para rarefacción", common_samples)
+    if sample_sel:
+        sample = otus[sample_sel]
+        sample = pd.to_numeric(sample, errors="coerce").fillna(0)
+        if sample.sum() == 0:
+            st.error("La muestra seleccionada está vacía. Prueba otra muestra.")
         else:
-            st.error("Usuario o contraseña incorrectos.")
-    if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
-        st.stop()
-
-if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
-    login()
-
-USER_KEY = f"uywa_mbio_{st.session_state['usuario']}"
-st.markdown(f"<div style='text-align:right; font-size:13px;'>👤 Usuario: <b>{st.session_state['usuario']}</b></div>", unsafe_allow_html=True)
-
-# ======================== BLOQUE 5: TITULO, UPLOADERS Y TABS PRINCIPALES ========================
-st.title("Gestión y Análisis de Microbiota 16S")
-tabs = st.tabs(["Carga de Archivos", "Diversidad", "Análisis Estadístico", "Visualización Taxonómica"])
-
-# ======================== BLOQUE 6: CARGA DE ARCHIVOS EN PESTAÑA 0 ========================
-with tabs[0]:
-    st.header("Carga de Archivos de Microbiota")
-    otus_file = st.file_uploader("Tabla OTUs/ASVs (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="otus_upload_tab")
-    taxonomy_file = st.file_uploader("Taxonomía (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="tax_upload_tab")
-    metadata_file = st.file_uploader("Metadata (csv/tsv/xlsx)", type=["csv", "tsv", "xlsx"], key="meta_upload_tab")
-
-    # Muestra información básica si los archivos están cargados
-    if otus_file:
-        df = load_table(otus_file)
-        st.success(f"OTUs/ASVs: {df.shape[0]} filas x {df.shape[1]} columnas")
-    if taxonomy_file:
-        df = load_table(taxonomy_file)
-        st.success(f"Taxonomía: {df.shape[0]} filas x {df.shape[1]} columnas")
-    if metadata_file:
-        df = load_table(metadata_file)
-        st.success(f"Metadata: {df.shape[0]} muestras x {df.shape[1]} variables")
-
-    # Guarda en sesión para otras pestañas
-    if otus_file: st.session_state["otus_file"] = otus_file
-    if taxonomy_file: st.session_state["taxonomy_file"] = taxonomy_file
-    if metadata_file: st.session_state["metadata_file"] = metadata_file
-
-# ======================== BLOQUE 7: LLAMADA A CADA MÓDULO ========================
-with tabs[1]:
-    diversity_tab(
-        st.session_state.get("otus_file"),
-        st.session_state.get("taxonomy_file"),
-        st.session_state.get("metadata_file"),
-    )
-
-with tabs[2]:
-    stats_tab(
-        st.session_state.get("otus_file"),
-        st.session_state.get("taxonomy_file"),
-        st.session_state.get("metadata_file"),
-    )
-
-with tabs[3]:
-    taxonomy_tab(
-        st.session_state.get("otus_file"),
-        st.session_state.get("taxonomy_file"),
-        st.session_state.get("metadata_file"),
-    )
+            depths, values = rarefaction_curve(sample)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=depths, y=values, mode="lines+markers"))
+            fig.update_layout(title=f"Rarefacción: {sample_sel}", xaxis_title="Profundidad", yaxis_title="OTUs Observados")
+            st.plotly_chart(fig, use_container_width=True)
