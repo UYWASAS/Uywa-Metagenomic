@@ -160,7 +160,7 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # PERMANOVA: extremadamente robusto para dict, DataFrame, objeto
+    # PERMANOVA: extremadamente robusto + DEBUG para ver estructura real
     if color_var_beta and color_var_beta in metadata.columns:
         try:
             grouping = metadata.loc[coords.index, color_var_beta]
@@ -168,14 +168,13 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
             if grouping.nunique() > 1 and all(group_counts > 1):
                 dm = DistanceMatrix(dist.data, ids=dist.ids)
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
-               st.write("PERMANOVA result (type):", type(permanova_res))
-               st.write("PERMANOVA result (value):", permanova_res)
+                # LÍNEAS DE DEBUG para ver el resultado real:
+                st.write("PERMANOVA result (type):", type(permanova_res))
+                st.write("PERMANOVA result (value):", permanova_res)
 
                 pval = stat = r2 = None
-                # DataFrame (scikit-bio >=0.5)
                 if hasattr(permanova_res, "iloc") and hasattr(permanova_res, "columns"):
                     row = permanova_res.iloc[0]
-                    # Intenta múltiples nombres de columnas para máxima compatibilidad
                     pval = row.get('p-value', row.get('p_value', None)) if hasattr(row, 'get') else row['p-value'] if 'p-value' in row else None
                     stat = row.get('test statistic', row.get('statistic', None)) if hasattr(row, 'get') else row['test statistic'] if 'test statistic' in row else (row['statistic'] if 'statistic' in row else None)
                     r2 = row.get('r2', None) if hasattr(row, 'get') else row['r2'] if 'r2' in row else None
