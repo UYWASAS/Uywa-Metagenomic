@@ -169,22 +169,18 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
                 dm = DistanceMatrix(dist.data, ids=dist.ids)
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
 
-                # DEBUG: descomenta esto para ver el resultado crudo
-                # st.write("PERMANOVA result (debug):", permanova_res)
-
                 pval = stat = r2 = None
                 # DataFrame (scikit-bio >=0.5)
                 if hasattr(permanova_res, "iloc") and hasattr(permanova_res, "columns"):
                     row = permanova_res.iloc[0]
-                    pval = row['p-value'] if 'p-value' in row else None
-                    stat = row['test statistic'] if 'test statistic' in row else (row['statistic'] if 'statistic' in row else None)
-                    r2 = row['r2'] if 'r2' in row else None
-                # dict
+                    # Intenta múltiples nombres de columnas para máxima compatibilidad
+                    pval = row.get('p-value', row.get('p_value', None)) if hasattr(row, 'get') else row['p-value'] if 'p-value' in row else None
+                    stat = row.get('test statistic', row.get('statistic', None)) if hasattr(row, 'get') else row['test statistic'] if 'test statistic' in row else (row['statistic'] if 'statistic' in row else None)
+                    r2 = row.get('r2', None) if hasattr(row, 'get') else row['r2'] if 'r2' in row else None
                 elif isinstance(permanova_res, dict):
-                    pval = permanova_res.get('p-value')
+                    pval = permanova_res.get('p-value', permanova_res.get('p_value'))
                     stat = permanova_res.get('test statistic', permanova_res.get('statistic'))
                     r2 = permanova_res.get('r2')
-                # objeto con atributos
                 else:
                     try:
                         pval = getattr(permanova_res, 'p_value', None)
@@ -194,12 +190,9 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
                         pass
 
                 msg = f"PERMANOVA (adonis) para {color_var_beta}: "
-                if pval is not None:
-                    msg += f"p = {pval:.3g}, "
-                if stat is not None:
-                    msg += f"pseudo-F = {stat:.3g}"
-                if r2 is not None:
-                    msg += f", R2 = {r2:.3g}"
+                msg += f"p = {pval}, " if pval is not None else "p = None, "
+                msg += f"pseudo-F = {stat}" if stat is not None else "pseudo-F = None"
+                msg += f", R2 = {r2}" if r2 is not None else ""
                 st.caption(msg)
             else:
                 st.caption("PERMANOVA requiere al menos 2 grupos con más de 1 muestra cada uno.")
