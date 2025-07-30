@@ -180,6 +180,10 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
             st.write("¿Hay NaN en dist.data?", np.isnan(dist.data).any())
             st.write("¿Hay NaN en grouping?", grouping.isnull().any())
 
+            # Valores extra para revisar contenido
+            st.write("Valores únicos en grouping:", grouping.unique())
+            st.write("Valores mínimos/máximos en dist.data:", np.nanmin(dist.data), np.nanmax(dist.data))
+
             # Prueba manual con subconjunto reducido
             try:
                 test_ids = list(dist.ids[:5])
@@ -196,6 +200,8 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
                 dm = DistanceMatrix(dist.data.copy(order="C"), ids=dist.ids)
                 st.write("¿Hay NaN en dist.data (completo)?", np.isnan(dist.data).any())
                 st.write("¿Hay NaN en grouping (completo)?", grouping.isnull().any())
+                st.write("Valores únicos en grouping (completo):", grouping.unique())
+                st.write("Valores mínimos/máximos en dist.data (completo):", np.nanmin(dist.data), np.nanmax(dist.data))
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
                 st.write("PERMANOVA result (type):", type(permanova_res))
                 st.write("PERMANOVA result (value):", permanova_res)
