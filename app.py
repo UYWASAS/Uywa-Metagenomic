@@ -66,8 +66,12 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
+    # Opcional: Botón para cerrar sesión
+    if st.button("Cerrar sesión"):
+        st.session_state.clear()
+        st.experimental_rerun()
 
-# ======================== BLOQUE 3: LOGIN CON ARCHIVO AUTH.PY ROBUSTO ========================
+# ======================== BLOQUE 3: LOGIN ========================
 from auth import USERS_DB  # <-- IMPORTA TU ARCHIVO AUTH.PY AQUÍ
 
 def login():
@@ -94,12 +98,8 @@ if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
 USER_KEY = f"uywa_mbio_{st.session_state['usuario']}"
 st.markdown(f"<div style='text-align:right; font-size:13px;'>👤 Usuario: <b>{st.session_state['usuario']}</b></div>", unsafe_allow_html=True)
 
-# ======================== BLOQUE 4: UTILIDADES DE SESIÓN ========================
-# Ya se importó safe_float y clean_state desde utils.py
-
 # ======================== BLOQUE 5: TITULO, UPLOADERS Y TABS PRINCIPALES ========================
 st.title("Gestión y Análisis de Microbiota 16S")
-
 tabs = st.tabs(["Carga de Archivos", "Diversidad", "Análisis Estadístico", "Visualización Taxonómica"])
 
 # ======================== BLOQUE 6: CARGA DE ARCHIVOS EN PESTAÑA 0 ========================
@@ -112,7 +112,7 @@ with tabs[0]:
     # Muestra información básica si los archivos están cargados
     if otus_file:
         df = load_table(otus_file)
-        st.success(f"OTUs/ASVs: {df.shape[0]} muestras x {df.shape[1]} OTUs")
+        st.success(f"OTUs/ASVs: {df.shape[0]} filas x {df.shape[1]} columnas")
     if taxonomy_file:
         df = load_table(taxonomy_file)
         st.success(f"Taxonomía: {df.shape[0]} filas x {df.shape[1]} columnas")
