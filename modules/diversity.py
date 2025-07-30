@@ -165,7 +165,7 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
         try:
             grouping = metadata.loc[coords.index, color_var_beta]
 
-            # Forzar los valores a str para máxima compatibilidad con scikit-bio y evitar bugs
+            # Forzar los valores a str antes de llamar a PERMANOVA
             grouping = grouping.astype(str)
 
             group_counts = grouping.value_counts()
