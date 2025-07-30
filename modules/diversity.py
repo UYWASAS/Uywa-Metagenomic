@@ -181,7 +181,7 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
             # Prueba manual con subconjunto reducido
             try:
                 test_ids = list(dist.ids[:5])
-                test_dm = DistanceMatrix(dist.data[:5, :5], ids=test_ids)
+                test_dm = DistanceMatrix(dist.data[:5, :5].copy(order="C"), ids=test_ids)
                 test_grouping = grouping.loc[test_ids]
                 st.write("Test grouping:", test_grouping)
                 test_result = permanova(test_dm, grouping=test_grouping, permutations=99)
@@ -191,7 +191,7 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
 
             # PERMANOVA real (solo si hay >1 grupo y cada grupo >1 muestra)
             if grouping.nunique() > 1 and all(group_counts > 1):
-                dm = DistanceMatrix(dist.data, ids=dist.ids)
+                dm = DistanceMatrix(dist.data.copy(order="C"), ids=dist.ids)
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
                 st.write("PERMANOVA result (type):", type(permanova_res))
                 st.write("PERMANOVA result (value):", permanova_res)
