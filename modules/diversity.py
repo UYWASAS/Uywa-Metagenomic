@@ -160,18 +160,26 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # PERMANOVA: extremadamente robusto + DEBUG para ver estructura real
+    # PERMANOVA: limpieza y debug para evitar errores por caracteres
     if color_var_beta and color_var_beta in metadata.columns:
         try:
             grouping = metadata.loc[coords.index, color_var_beta]
             group_counts = grouping.value_counts()
+            # Debug antes de limpiar
+            st.write("PERMANOVA grouping (antes de limpiar):", grouping)
+            st.write("Grouping unique values (antes):", grouping.unique())
+            # Limpia caracteres problemáticos
+            grouping = grouping.astype(str).str.replace(r"[^a-zA-Z0-9_\-]", "_", regex=True)
+            st.write("PERMANOVA grouping (después de limpiar):", grouping)
+            st.write("Grouping unique values (después):", grouping.unique())
+            st.write("Grouping as list:", list(grouping))
+            # PERMANOVA solo si hay más de un grupo y cada grupo tiene más de 1 muestra
             if grouping.nunique() > 1 and all(group_counts > 1):
                 dm = DistanceMatrix(dist.data, ids=dist.ids)
                 permanova_res = permanova(dm, grouping=grouping, permutations=999)
-                # LÍNEAS DE DEBUG para ver el resultado real:
                 st.write("PERMANOVA result (type):", type(permanova_res))
                 st.write("PERMANOVA result (value):", permanova_res)
-
+                # Intenta extraer p-valor, pseudo-F y R2 (ajusta aquí según lo que veas en el output)
                 pval = stat = r2 = None
                 if hasattr(permanova_res, "iloc") and hasattr(permanova_res, "columns"):
                     row = permanova_res.iloc[0]
@@ -189,7 +197,6 @@ def plot_beta_diversity(coords, metadata, dist, cat_vars_beta):
                         r2 = getattr(permanova_res, 'r2', None)
                     except Exception:
                         pass
-
                 msg = f"PERMANOVA (adonis) para {color_var_beta}: "
                 msg += f"p = {pval}, " if pval is not None else "p = None, "
                 msg += f"pseudo-F = {stat}" if stat is not None else "pseudo-F = None"
