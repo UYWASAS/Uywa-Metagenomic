@@ -15,6 +15,24 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
         st.warning("Carga archivos para visualizar taxonomía.")
         return
 
+    # Limpia y normaliza índices para asegurar coincidencia exacta
+    otus.index = otus.index.map(lambda x: str(x).strip())
+    taxonomy.index = taxonomy.index.map(lambda x: str(x).strip())
+    # Si tienes dudas de mayúsculas/minúsculas, descomenta la siguiente línea en ambos:
+    # otus.index = otus.index.map(lambda x: str(x).strip().upper())
+    # taxonomy.index = taxonomy.index.map(lambda x: str(x).strip().upper())
+
+    # Chequeo de coincidencias y debug amigable
+    if not otus.index.isin(taxonomy.index).any():
+        st.error(
+            "No hay coincidencias entre los OTU IDs de la matriz y la tabla de taxonomía.\n\n"
+            f"Ejemplo primeros OTU en matriz: {', '.join(list(otus.index[:5]))}\n"
+            f"Ejemplo primeros OTU en taxonomía: {', '.join(list(taxonomy.index[:5]))}\n"
+            "¿Coinciden exactamente? Si ves espacios, diferencias de formato o mayúsculas, corrígelos en tus archivos "
+            "o activa la normalización .upper() en ambas líneas arriba."
+        )
+        st.stop()
+
     # Normaliza nombres de columna de taxonomía (por si acaso)
     taxonomy.columns = [str(c).strip().capitalize() for c in taxonomy.columns]
 
@@ -51,9 +69,6 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                         st.info("Selecciona dos variables diferentes para la interacción.")
 
             # Unir OTUs con taxonomía (por índice)
-            if not otus.index.isin(taxonomy.index).any():
-                st.error("No hay coincidencias entre los OTU IDs de la matriz y la tabla de taxonomía.")
-                continue
             otus_tax = otus.join(taxonomy, how="inner")
             if otus_tax.empty:
                 st.warning("La unión OTU-taxonomía no produjo datos. Revisa que los IDs coincidan exactamente.")
