@@ -4,14 +4,15 @@ def load_table(file, index_col=None, sep=None):
     """
     Carga un archivo de tabla (.csv, .tsv, .xlsx) y configura el índice si se indica.
     Soporta index_col como nombre de columna (str) o índice por posición (int).
-    Ahora es robusto a variantes comunes de nombres de columna y espacios.
+    Es robusto a variantes comunes de nombres de columna y espacios.
     - file: archivo cargado (st.file_uploader)
     - index_col: nombre de la columna a usar como índice (ej: "OTU", "SampleID") o posición (0, 1, ...)
     - sep: separador opcional (por defecto autodetecta por extensión)
     """
     if file is None:
         return None
-    filename = file.name.lower()
+    filename = file.name.lower() if hasattr(file, "name") else ""
+    # Carga el archivo según extensión
     if filename.endswith(".csv"):
         df = pd.read_csv(file, sep=sep if sep else ",")
     elif filename.endswith(".tsv") or filename.endswith(".txt"):
@@ -20,7 +21,7 @@ def load_table(file, index_col=None, sep=None):
         df = pd.read_excel(file)
     else:
         raise ValueError("Formato de archivo no soportado.")
-    # Normaliza columnas: quita espacios y pone en minúsculas para la búsqueda
+    # Normaliza nombres de columnas (quita espacios y pone en minúsculas para la búsqueda)
     colnames_raw = list(df.columns)
     colnames_norm = [str(col).strip().replace(" ", "").lower() for col in df.columns]
     # Fuerza el uso del nombre de columna como índice si es string
@@ -36,6 +37,7 @@ def load_table(file, index_col=None, sep=None):
             )
     elif index_col is not None and isinstance(index_col, int):
         df.set_index(df.columns[index_col], inplace=True)
+    # Limpia nombres finales de columnas e índice
     df.columns = [str(col).strip() for col in df.columns]
     df.index = df.index.map(lambda x: str(x).strip())
     return df
