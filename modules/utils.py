@@ -12,7 +12,7 @@ def load_table(file, index_col=None, sep=None):
     if file is None:
         return None
     filename = file.name.lower() if hasattr(file, "name") else ""
-    # Carga el archivo según extensión
+    # Carga el archivo según extensión, SIEMPRE SIN índice
     if filename.endswith(".csv"):
         df = pd.read_csv(file, sep=sep if sep else ",")
     elif filename.endswith(".tsv") or filename.endswith(".txt"):
@@ -22,18 +22,17 @@ def load_table(file, index_col=None, sep=None):
     else:
         raise ValueError("Formato de archivo no soportado.")
     # Normaliza nombres de columnas (quita espacios y pone en minúsculas para la búsqueda)
-    colnames_raw = list(df.columns)
-    colnames_norm = [str(col).strip().replace(" ", "").lower() for col in df.columns]
+    colnames_raw = [str(c) for c in df.columns]
+    colnames_norm = [c.strip().replace(" ", "").lower() for c in colnames_raw]
     # Fuerza el uso del nombre de columna como índice si es string
     if index_col is not None and not isinstance(index_col, int):
         idx_norm = index_col.strip().replace(" ", "").lower()
         if idx_norm in colnames_norm:
-            true_col = colnames_raw[colnames_norm.index(idx_norm)]
-            df.set_index(true_col, inplace=True)
+            real_col = colnames_raw[colnames_norm.index(idx_norm)]
+            df.set_index(real_col, inplace=True)
         else:
             raise ValueError(
-                f"La columna '{index_col}' no se encuentra en el archivo {filename}\n"
-                f"Las columnas encontradas son: {colnames_raw}"
+                f"No se encontró la columna '{index_col}'. Columnas detectadas: {colnames_raw}"
             )
     elif index_col is not None and isinstance(index_col, int):
         df.set_index(df.columns[index_col], inplace=True)
