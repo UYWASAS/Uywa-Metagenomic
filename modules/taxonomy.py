@@ -12,10 +12,10 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
         st.warning("Carga archivos para visualizar taxonomía.")
         return
 
-    # Normaliza los nombres de columnas (Kingdom/kingdom/KINGDOM)
+    # Normaliza nombres de columna de taxonomía
     taxonomy.columns = [str(c).strip().capitalize() for c in taxonomy.columns]
 
-    # Detecta niveles taxonómicos válidos (mínimo 2 valores únicos y no nulos)
+    # Detecta niveles taxonómicos válidos
     tax_levels = [col for col in taxonomy.columns if taxonomy[col].nunique(dropna=True) > 1]
     if not tax_levels:
         st.warning("No se detectaron niveles taxonómicos múltiples en el archivo de taxonomía.")
@@ -36,7 +36,6 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
         with tabs[i]:
             st.subheader(f"Barplot apilado por {nivel} (top 10 + Otros)")
 
-            # Selección de agrupación
             color_var = None
             symbol_var = None
             use_interaction = False
@@ -48,38 +47,67 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     if symbol_var == color_var:
                         st.info("Selecciona dos variables diferentes para la interacción.")
 
-            # --- UNIÓN OTUs-TAXONOMÍA ROBUSTA ---
-            # Se asegura de que los índices coincidan
-            otus_T = otus.T.copy()
-            # Forzamos que los OTU IDs en taxonomy sean string para igualar a las columnas de otus
+            # DEPURACIÓN: muestra las dimensiones y los índices/columnas originales
+            st.write("Dimensiones OTUs:", otus.shape)
+            st.write("Primeras columnas OTUs:", otus.columns[:5])
+            st.write("Dimensiones Taxonomía:", taxonomy.shape)
+            st.write("Primeros índices Taxonomía:", taxonomy.index[:5])
+            st.write("Primeras filas Taxonomía:", taxonomy.head())
+
+            # Forzar tipo str en índices y columnas
             taxonomy.index = taxonomy.index.astype(str)
-            otus_T.columns = otus_T.columns.astype(str)
-            # Para cada OTU/ASV de la matriz, busca su taxonomía
-            tax_for_otus = taxonomy.loc[otus_T.columns]
+            otus.columns = otus.columns.astype(str)
+
+            # Solo usar OTUs presentes en ambos
+            comunes = [otu for otu in otus.columns if otu in taxonomy.index]
+            if len(comunes) == 0:
+                st.error("No hay coincidencias entre OTU IDs en la matriz y la tabla de taxonomía.")
+                return
+
+            otus_T = otus[comunes].T.copy()
+            tax_for_otus = taxonomy.loc[otus_T.index]
+
+            # DEPURACIÓN: muestra después del join
+            st.write("Dimensiones OTUs_T (tras filtrar):", otus_T.shape)
+            st.write("Dimensiones Tax_for_otus (tras join):", tax_for_otus.shape)
+
             otus_tax = otus_T.copy()
             otus_tax[nivel] = tax_for_otus[nivel].values
 
+            # DEPURACIÓN: muestra después de añadir columna nivel
+            st.write("Dimensiones otus_tax:", otus_tax.shape)
+            st.dataframe(otus_tax.head())
+
             # Agrupa por ese nivel taxonómico y suma
-            tax_sum = otus_tax.groupby(nivel, axis=1).sum()
+            tax_sum = otus_tax.groupby(nivel).sum()
+            st.write("tax_sum shape:", tax_sum.shape)
+            st.dataframe(tax_sum.head())
+
             # Solo deja top 10 + Otros
             top_taxa = tax_sum.sum().sort_values(ascending=False).head(10).index
-            tax_sum_top = tax_sum[top_taxa]
-            other_cols = [col for col in tax_sum.columns if col not in top_taxa]
+            tax_sum_top = tax_sum.loc[top_taxa]
+            other_cols = [col for col in tax_sum.index if col not in top_taxa]
             if other_cols:
-                tax_sum_top["Otros"] = tax_sum[other_cols].sum(axis=1)
+                sum_otros = tax_sum.loc[other_cols].sum()
+                tax_sum_top.loc["Otros"] = sum_otros
+            tax_sum_top = tax_sum_top.T
             # Normaliza a porcentaje por muestra
             tax_sum_pct = tax_sum_top.div(tax_sum_top.sum(axis=1), axis=0) * 100
             tax_sum_pct.index.name = "Muestra"
+            st.write("tax_sum_pct shape:", tax_sum_pct.shape)
+            st.dataframe(tax_sum_pct.head())
+
             plot_df = tax_sum_pct.reset_index().melt(id_vars="Muestra", var_name=nivel, value_name="Porcentaje")
 
-            # --- FILTRO: ¿Hay datos para graficar? ---
+            # DEPURACIÓN: muestra la tabla final antes del plot
+            st.dataframe(plot_df.head(20))
+            st.write(plot_df["Porcentaje"].describe())
+
             if plot_df["Porcentaje"].isnull().all() or (plot_df["Porcentaje"].sum() == 0):
                 st.warning(f"No hay datos para graficar en el nivel '{nivel}'.")
                 continue
 
-            # Añade metadata para agrupación/interacción
             if meta_df is not None and color_var:
-                # Busca la columna de IDs correcta para merge
                 id_col = None
                 for col in meta_df.columns:
                     if set(plot_df["Muestra"]).issubset(set(meta_df[col].astype(str))):
