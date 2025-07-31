@@ -3,26 +3,40 @@ import pandas as pd
 def load_table(file, index_col=None, sep=None):
     """
     Carga un archivo de tabla (.csv, .tsv, .xlsx) y configura el índice si se indica.
+    Soporta index_col como nombre de columna (str) o índice por posición (int).
     Ahora es robusto a variantes comunes de nombres de columna y espacios.
     - file: archivo cargado (st.file_uploader)
-    - index_col: nombre de la columna a usar como índice (ej: "OTU", "SampleID")
+    - index_col: nombre de la columna a usar como índice (ej: "OTU", "SampleID") o posición (0, 1, ...)
     - sep: separador opcional (por defecto autodetecta por extensión)
     """
     if file is None:
         return None
     filename = file.name.lower()
     if filename.endswith(".csv"):
-        df = pd.read_csv(file, sep=sep if sep else ",")
+        read_args = {"sep": sep if sep else ","}
+        if isinstance(index_col, int):
+            read_args["index_col"] = index_col
+            df = pd.read_csv(file, **read_args)
+        else:
+            df = pd.read_csv(file, **read_args)
     elif filename.endswith(".tsv") or filename.endswith(".txt"):
-        df = pd.read_csv(file, sep=sep if sep else "\t")
+        read_args = {"sep": sep if sep else "\t"}
+        if isinstance(index_col, int):
+            read_args["index_col"] = index_col
+            df = pd.read_csv(file, **read_args)
+        else:
+            df = pd.read_csv(file, **read_args)
     elif filename.endswith(".xlsx"):
-        df = pd.read_excel(file)
+        if isinstance(index_col, int):
+            df = pd.read_excel(file, index_col=index_col)
+        else:
+            df = pd.read_excel(file)
     else:
         raise ValueError("Formato de archivo no soportado.")
     # Normaliza columnas: quita espacios y pone en minúsculas para la búsqueda
     colnames_raw = list(df.columns)
     colnames_norm = [str(col).strip().replace(" ", "").lower() for col in df.columns]
-    if index_col is not None:
+    if index_col is not None and not isinstance(index_col, int):
         idx_norm = index_col.strip().replace(" ", "").lower()
         # Busca una columna que coincida con el index_col normalizado
         if idx_norm in colnames_norm:
