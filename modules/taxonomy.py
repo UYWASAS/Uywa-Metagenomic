@@ -15,22 +15,27 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
         st.warning("Carga archivos para visualizar taxonomía.")
         return
 
-    # Limpia y normaliza índices para asegurar coincidencia exacta
-    otus.index = otus.index.map(lambda x: str(x).strip())
-    taxonomy.index = taxonomy.index.map(lambda x: str(x).strip())
-    # Si tienes dudas de mayúsculas/minúsculas, descomenta la siguiente línea en ambos:
-    # otus.index = otus.index.map(lambda x: str(x).strip().upper())
-    # taxonomy.index = taxonomy.index.map(lambda x: str(x).strip().upper())
+    # Normaliza y muestra los índices para debug
+    def clean_otu_id(x):
+        s = str(x).strip().upper()
+        if s.endswith('.0'):  # Excel puede guardar OTU_1 como OTU_1.0
+            s = s[:-2]
+        return s
 
-    # Chequeo de coincidencias y debug amigable
+    otus.index = otus.index.map(clean_otu_id)
+    taxonomy.index = taxonomy.index.map(clean_otu_id)
+
+    # Debug: Muestra los IDs que no coinciden
+    missing_in_tax = set(otus.index) - set(taxonomy.index)
+    missing_in_otus = set(taxonomy.index) - set(otus.index)
+
+    st.write(f"Primeros 5 OTUs en matriz: {list(otus.index[:5])}")
+    st.write(f"Primeros 5 OTUs en taxonomía: {list(taxonomy.index[:5])}")
+    st.write(f"OTUs en matriz y NO en taxonomía (max 5): {list(missing_in_tax)[:5]}")
+    st.write(f"OTUs en taxonomía y NO en matriz (max 5): {list(missing_in_otus)[:5]}")
+
     if not otus.index.isin(taxonomy.index).any():
-        st.error(
-            "No hay coincidencias entre los OTU IDs de la matriz y la tabla de taxonomía.\n\n"
-            f"Ejemplo primeros OTU en matriz: {', '.join(list(otus.index[:5]))}\n"
-            f"Ejemplo primeros OTU en taxonomía: {', '.join(list(taxonomy.index[:5]))}\n"
-            "¿Coinciden exactamente? Si ves espacios, diferencias de formato o mayúsculas, corrígelos en tus archivos "
-            "o activa la normalización .upper() en ambas líneas arriba."
-        )
+        st.error("No hay coincidencias entre los OTU IDs de la matriz y la tabla de taxonomía.")
         st.stop()
 
     # Normaliza nombres de columna de taxonomía (por si acaso)
