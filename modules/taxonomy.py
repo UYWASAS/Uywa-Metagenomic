@@ -18,32 +18,66 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
         st.warning("No se detectaron niveles taxonómicos múltiples en el archivo de taxonomía.")
         return
 
-    nivel = st.selectbox("Nivel taxonómico", tax_levels, index=tax_levels.index("Phylum") if "Phylum" in tax_levels else 0)
+    cat_vars = []
+    if metadata is not None:
+        cat_vars = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
 
-    st.subheader(f"Barplot apilado por {nivel} (top 10)")
-    if nivel in taxonomy.columns:
-        # Suma por nivel taxonómico
-        otus_tax = otus.T.join(taxonomy[nivel])
-        tax_sum = otus_tax.groupby(nivel).sum().T
-        top_taxa = tax_sum.sum().sort_values(ascending=False).head(10).index
-        tax_sum_top = tax_sum[top_taxa]
-        # Agrupa en "Otros" el resto
-        other_cols = [col for col in tax_sum.columns if col not in top_taxa]
-        if other_cols:
-            tax_sum_top["Otros"] = tax_sum[other_cols].sum(axis=1)
-        # Normaliza a porcentaje por muestra
-        tax_sum_pct = tax_sum_top.div(tax_sum_top.sum(axis=1), axis=0) * 100
-        # Prepara formato largo para plotly
-        plot_df = tax_sum_pct.reset_index().melt(id_vars="index", var_name=nivel, value_name="Porcentaje")
-        plot_df = plot_df.rename(columns={"index": "Muestra"})
+    tabs = st.tabs(tax_levels)
+    for i, nivel in enumerate(tax_levels):
+        with tabs[i]:
+            st.subheader(f"Barplot apilado por {nivel} (top 10 + Otros)")
 
-        fig = px.bar(
-            plot_df,
-            x="Muestra", y="Porcentaje", color=nivel,
-            title=f"Abundancia relativa por {nivel} (Top 10 + Otros)",
-            labels={"Porcentaje":"% abundancia relativa"}
-        )
-        fig.update_layout(barmode="stack", xaxis_title="Muestra", yaxis_title="% abundancia relativa")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning(f"No se encuentra la columna '{nivel}' en el archivo de taxonomía.")
+            # Selección de variable de agrupación y posible interacción como en diversidad
+            color_var = None
+            symbol_var = None
+            use_interaction = False
+            if cat_vars:
+                color_var = st.selectbox("Variable de agrupación", cat_vars, index=0, key=f"tax_color_{nivel}")
+                use_interaction = st.checkbox("¿Mostrar interacción entre dos variables?", value=False, key=f"tax_inter_{nivel}")
+                if use_interaction:
+                    symbol_var = st.selectbox("Variable para interacción (símbolo)", cat_vars, index=1 if len(cat_vars) > 1 else 0, key=f"tax_symbol_{nivel}")
+                    if symbol_var == color_var:
+                        st.info("Selecciona dos variables diferentes para la interacción.")
+
+            # Procesamiento de los datos taxonómicos
+            otus_tax = otus.T.join(taxonomy[nivel])
+            tax_sum = otus_tax.groupby(nivel).sum().T
+            top_taxa = tax_sum.sum().sort_values(ascending=False).head(10).index
+            tax_sum_top = tax_sum[top_taxa]
+            other_cols = [col for col in tax_sum.columns if col not in top_taxa]
+            if other_cols:
+                tax_sum_top["Otros"] = tax_sum[other_cols].sum(axis=1)
+            tax_sum_pct = tax_sum_top.div(tax_sum_top.sum(axis=1), axis=0) * 100
+            tax_sum_pct.index.name = "Muestra"
+            plot_df = tax_sum_pct.reset_index().melt(id_vars="Muestra", var_name=nivel, value_name="Porcentaje")
+
+            # Añadir metadata para agrupación/interacción
+            if metadata is not None and color_var:
+                plot_df = plot_df.merge(metadata.reset_index(), left_on="Muestra", right_on="SampleID", how="left")
+                if use_interaction and symbol_var and symbol_var != color_var:
+                    fig = px.bar(
+                        plot_df,
+                        x="Muestra", y="Porcentaje", color=nivel,
+                        facet_col=color_var,
+                        pattern_shape=symbol_var,
+                        title=f"Abundancia relativa por {nivel} agrupado por {color_var} y {symbol_var}",
+                        labels={"Porcentaje": "% abundancia relativa"}
+                    )
+                else:
+                    fig = px.bar(
+                        plot_df,
+                        x="Muestra", y="Porcentaje", color=nivel,
+                        facet_col=color_var,
+                        title=f"Abundancia relativa por {nivel} agrupado por {color_var}",
+                        labels={"Porcentaje": "% abundancia relativa"}
+                    )
+            else:
+                fig = px.bar(
+                    plot_df,
+                    x="Muestra", y="Porcentaje", color=nivel,
+                    title=f"Abundancia relativa por {nivel} (Top 10 + Otros)",
+                    labels={"Porcentaje": "% abundancia relativa"}
+                )
+
+            fig.update_layout(barmode="stack", xaxis_title="Muestra", yaxis_title="% abundancia relativa")
+            st.plotly_chart(fig, use_container_width=True)
