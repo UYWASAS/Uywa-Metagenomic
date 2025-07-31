@@ -13,32 +13,19 @@ def load_table(file, index_col=None, sep=None):
         return None
     filename = file.name.lower()
     if filename.endswith(".csv"):
-        read_args = {"sep": sep if sep else ","}
-        if isinstance(index_col, int):
-            read_args["index_col"] = index_col
-            df = pd.read_csv(file, **read_args)
-        else:
-            df = pd.read_csv(file, **read_args)
+        df = pd.read_csv(file, sep=sep if sep else ",")
     elif filename.endswith(".tsv") or filename.endswith(".txt"):
-        read_args = {"sep": sep if sep else "\t"}
-        if isinstance(index_col, int):
-            read_args["index_col"] = index_col
-            df = pd.read_csv(file, **read_args)
-        else:
-            df = pd.read_csv(file, **read_args)
+        df = pd.read_csv(file, sep=sep if sep else "\t")
     elif filename.endswith(".xlsx"):
-        if isinstance(index_col, int):
-            df = pd.read_excel(file, index_col=index_col)
-        else:
-            df = pd.read_excel(file)
+        df = pd.read_excel(file)
     else:
         raise ValueError("Formato de archivo no soportado.")
     # Normaliza columnas: quita espacios y pone en minúsculas para la búsqueda
     colnames_raw = list(df.columns)
     colnames_norm = [str(col).strip().replace(" ", "").lower() for col in df.columns]
+    # Fuerza el uso del nombre de columna como índice si es string
     if index_col is not None and not isinstance(index_col, int):
         idx_norm = index_col.strip().replace(" ", "").lower()
-        # Busca una columna que coincida con el index_col normalizado
         if idx_norm in colnames_norm:
             true_col = colnames_raw[colnames_norm.index(idx_norm)]
             df.set_index(true_col, inplace=True)
@@ -47,6 +34,8 @@ def load_table(file, index_col=None, sep=None):
                 f"La columna '{index_col}' no se encuentra en el archivo {filename}\n"
                 f"Las columnas encontradas son: {colnames_raw}"
             )
+    elif index_col is not None and isinstance(index_col, int):
+        df.set_index(df.columns[index_col], inplace=True)
     df.columns = [str(col).strip() for col in df.columns]
     df.index = df.index.map(lambda x: str(x).strip())
     return df
