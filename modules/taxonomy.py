@@ -12,15 +12,20 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
         st.warning("Carga archivos para visualizar taxonomía.")
         return
 
-    # Detecta niveles taxonómicos (Phylum, Class, Order, Family, Genus, Species...)
+    # Detecta niveles taxonómicos válidos: más de un valor único
     tax_levels = [col for col in taxonomy.columns if taxonomy[col].nunique() > 1]
     if not tax_levels:
         st.warning("No se detectaron niveles taxonómicos múltiples en el archivo de taxonomía.")
         return
 
+    # Detecta variables categóricas de la metadata
     cat_vars = []
     if metadata is not None:
-        cat_vars = [col for col in metadata.columns if 1 < metadata[col].nunique() < len(metadata)]
+        meta_df = metadata.reset_index()
+        if "SampleID" not in meta_df.columns:
+            if "index" in meta_df.columns:
+                meta_df = meta_df.rename(columns={"index": "SampleID"})
+        cat_vars = [col for col in meta_df.columns if 1 < meta_df[col].nunique() < len(meta_df)]
 
     tabs = st.tabs(tax_levels)
     for i, nivel in enumerate(tax_levels):
@@ -51,9 +56,19 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
             tax_sum_pct.index.name = "Muestra"
             plot_df = tax_sum_pct.reset_index().melt(id_vars="Muestra", var_name=nivel, value_name="Porcentaje")
 
-            # Añadir metadata para agrupación/interacción
+            # Añadir metadata para agrupación/interacción (merge robusto)
             if metadata is not None and color_var:
-                plot_df = plot_df.merge(metadata.reset_index(), left_on="Muestra", right_on="SampleID", how="left")
+                meta_df = metadata.reset_index()
+                # Encuentra la columna de ID de muestra para hacer merge
+                id_col = None
+                for col in meta_df.columns:
+                    if set(plot_df["Muestra"]).issubset(set(meta_df[col])):
+                        id_col = col
+                        break
+                if id_col is None:
+                    st.error("No se encuentra la columna de ID de muestra en la metadata.")
+                    continue
+                plot_df = plot_df.merge(meta_df, left_on="Muestra", right_on=id_col, how="left")
                 if use_interaction and symbol_var and symbol_var != color_var:
                     fig = px.bar(
                         plot_df,
