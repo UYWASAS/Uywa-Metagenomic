@@ -12,17 +12,21 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
         st.warning("Carga archivos para visualizar taxonomía.")
         return
 
-    # Detecta niveles taxonómicos válidos: más de un valor único
-    tax_levels = [col for col in taxonomy.columns if taxonomy[col].nunique() > 1]
+    # Normaliza los nombres de columnas (Kingdom/kingdom/KINGDOM)
+    taxonomy.columns = [str(c).strip().capitalize() for c in taxonomy.columns]
+
+    # Detecta niveles taxonómicos válidos (mínimo 2 valores únicos y no nulos)
+    tax_levels = [col for col in taxonomy.columns if taxonomy[col].nunique(dropna=True) > 1]
     if not tax_levels:
         st.warning("No se detectaron niveles taxonómicos múltiples en el archivo de taxonomía.")
         return
 
-    # Detecta variables categóricas de la metadata
+    # Variables categóricas de metadata
     cat_vars = []
+    meta_df = None
     if metadata is not None:
         meta_df = metadata.reset_index()
-        if "SampleID" not in meta_df.columns:
+        if "Sampleid" not in [c.lower() for c in meta_df.columns]:
             if "index" in meta_df.columns:
                 meta_df = meta_df.rename(columns={"index": "SampleID"})
         cat_vars = [col for col in meta_df.columns if 1 < meta_df[col].nunique() < len(meta_df)]
@@ -32,7 +36,7 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
         with tabs[i]:
             st.subheader(f"Barplot apilado por {nivel} (top 10 + Otros)")
 
-            # Selección de variable de agrupación y posible interacción como en diversidad
+            # Selección de agrupación
             color_var = None
             symbol_var = None
             use_interaction = False
@@ -44,29 +48,45 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     if symbol_var == color_var:
                         st.info("Selecciona dos variables diferentes para la interacción.")
 
-            # Procesamiento de los datos taxonómicos
-            otus_tax = otus.T.join(taxonomy[nivel])
-            tax_sum = otus_tax.groupby(nivel).sum().T
+            # --- UNIÓN OTUs-TAXONOMÍA ROBUSTA ---
+            # Se asegura de que los índices coincidan
+            otus_T = otus.T.copy()
+            # Forzamos que los OTU IDs en taxonomy sean string para igualar a las columnas de otus
+            taxonomy.index = taxonomy.index.astype(str)
+            otus_T.columns = otus_T.columns.astype(str)
+            # Para cada OTU/ASV de la matriz, busca su taxonomía
+            tax_for_otus = taxonomy.loc[otus_T.columns]
+            otus_tax = otus_T.copy()
+            otus_tax[nivel] = tax_for_otus[nivel].values
+
+            # Agrupa por ese nivel taxonómico y suma
+            tax_sum = otus_tax.groupby(nivel, axis=1).sum()
+            # Solo deja top 10 + Otros
             top_taxa = tax_sum.sum().sort_values(ascending=False).head(10).index
             tax_sum_top = tax_sum[top_taxa]
             other_cols = [col for col in tax_sum.columns if col not in top_taxa]
             if other_cols:
                 tax_sum_top["Otros"] = tax_sum[other_cols].sum(axis=1)
+            # Normaliza a porcentaje por muestra
             tax_sum_pct = tax_sum_top.div(tax_sum_top.sum(axis=1), axis=0) * 100
             tax_sum_pct.index.name = "Muestra"
             plot_df = tax_sum_pct.reset_index().melt(id_vars="Muestra", var_name=nivel, value_name="Porcentaje")
 
-            # Añadir metadata para agrupación/interacción (merge robusto)
-            if metadata is not None and color_var:
-                meta_df = metadata.reset_index()
-                # Encuentra la columna de ID de muestra para hacer merge
+            # --- FILTRO: ¿Hay datos para graficar? ---
+            if plot_df["Porcentaje"].isnull().all() or (plot_df["Porcentaje"].sum() == 0):
+                st.warning(f"No hay datos para graficar en el nivel '{nivel}'.")
+                continue
+
+            # Añade metadata para agrupación/interacción
+            if meta_df is not None and color_var:
+                # Busca la columna de IDs correcta para merge
                 id_col = None
                 for col in meta_df.columns:
-                    if set(plot_df["Muestra"]).issubset(set(meta_df[col])):
+                    if set(plot_df["Muestra"]).issubset(set(meta_df[col].astype(str))):
                         id_col = col
                         break
                 if id_col is None:
-                    st.error("No se encuentra la columna de ID de muestra en la metadata.")
+                    st.error("No se encuentra la columna de ID de muestra en la metadata para hacer merge.")
                     continue
                 plot_df = plot_df.merge(meta_df, left_on="Muestra", right_on=id_col, how="left")
                 if use_interaction and symbol_var and symbol_var != color_var:
