@@ -34,18 +34,23 @@ st.markdown("""
     section[data-testid="stSidebar"] * {
         color: #fff !important;
     }
-    section[data-testid="stSidebar"] button[kind="primary"] {
-        background-color: #fff !important;
+    /* CORRIGE el color solo para el texto del botón */
+    section[data-testid="stSidebar"] button {
         color: #19345c !important;
+        background-color: #fff !important;
         border-radius: 8px !important;
         border: 1px solid #2e4771 !important;
         margin-top: 18px;
         font-weight: 600;
     }
-    section[data-testid="stSidebar"] button[kind="primary"]:hover {
+    section[data-testid="stSidebar"] button:hover {
         background-color: #e3ecf7 !important;
         color: #19345c !important;
         border: 2px solid #19345c !important;
+    }
+    /* Corrige texto de botones hijos (por si acaso) */
+    section[data-testid="stSidebar"] button * {
+        color: #19345c !important;
     }
     .block-container {
         background: transparent !important;
