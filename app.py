@@ -34,6 +34,19 @@ st.markdown("""
     section[data-testid="stSidebar"] * {
         color: #fff !important;
     }
+    section[data-testid="stSidebar"] button[kind="primary"] {
+        background-color: #fff !important;
+        color: #19345c !important;
+        border-radius: 8px !important;
+        border: 1px solid #2e4771 !important;
+        margin-top: 18px;
+        font-weight: 600;
+    }
+    section[data-testid="stSidebar"] button[kind="primary"]:hover {
+        background-color: #e3ecf7 !important;
+        color: #19345c !important;
+        border: 2px solid #19345c !important;
+    }
     .block-container {
         background: transparent !important;
     }
@@ -66,7 +79,6 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
-    # Opcional: Botón para cerrar sesión
     if st.button("Cerrar sesión"):
         st.session_state.clear()
         st.experimental_rerun()
@@ -137,14 +149,14 @@ with tabs[1]:
     )
 
 with tabs[2]:
-    stats_tab(
+    taxonomy_tab(
         st.session_state.get("otus_file"),
         st.session_state.get("taxonomy_file"),
         st.session_state.get("metadata_file"),
     )
 
 with tabs[3]:
-    taxonomy_tab(
+    stats_tab(
         st.session_state.get("otus_file"),
         st.session_state.get("taxonomy_file"),
         st.session_state.get("metadata_file"),
