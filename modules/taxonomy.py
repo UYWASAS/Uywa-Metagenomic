@@ -103,24 +103,18 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     meta_df[col] = meta_df[col].astype(str)
                 id_col = None
                 for col in meta_df.columns:
-                    if set(plot_df["Muestra"]) <= set(meta_df[col]):
+                    if set(plot_df["Muestra"]).issubset(set(meta_df[col])):
                         id_col = col
                         break
                 if id_col is None:
                     st.error("No se encuentra la columna de ID de muestra en la metadata para hacer merge.")
-                    continue
+                    return
                 meta_df = meta_df.drop_duplicates(subset=[id_col])
-                plot_df = plot_df.merge(meta_df, left_on="Muestra", right_on=id_col, how="left")
-                if f"{color_var}_y" in plot_df.columns:
-                    plot_df[color_var] = plot_df[f"{color_var}_y"]
-                elif f"{color_var}_x" in plot_df.columns:
-                    plot_df[color_var] = plot_df[f"{color_var}_x"]
-                for suf in ["_x", "_y"]:
-                    col = f"{color_var}{suf}"
-                    if col in plot_df.columns:
-                        del plot_df[col]
-                plot_df = plot_df[plot_df[color_var].notnull()]
-                # FILTRO QUE SOLUCIONA EL PROBLEMA:
+                # Solo une las columnas relevantes (nunca toda la metadata)
+                plot_df = plot_df.merge(meta_df[[id_col, color_var]], left_on="Muestra", right_on=id_col, how="left")
+                # FILTRO CLAVE: solo filas donde la muestra está en su categoría
+                plot_df = plot_df[plot_df["Muestra"] == plot_df[id_col]]
+                plot_df = plot_df.drop(columns=[id_col])
                 plot_df = plot_df[plot_df["Porcentaje"] > 0]
 
                 if use_interaction and symbol_var and symbol_var != color_var:
@@ -150,7 +144,6 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                         labels={"Porcentaje": "% abundancia relativa"}
                     )
             else:
-                # FILTRO QUE SOLUCIONA EL PROBLEMA:
                 plot_df = plot_df[plot_df["Porcentaje"] > 0]
                 fig = px.bar(
                     plot_df,
