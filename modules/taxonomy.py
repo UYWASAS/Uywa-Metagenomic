@@ -121,9 +121,8 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                 plot_df_group = plot_df_group.merge(meta_df[[id_col, color_var]], left_on="Muestra", right_on=id_col, how="left")
                 plot_df_group = plot_df_group[plot_df_group["Porcentaje"] > 0]
 
-                # Ordenar muestras por grupo (opcional, mejora visual)
-                plot_df_group["order"] = plot_df_group.groupby(color_var)["Muestra"].transform(lambda x: pd.Categorical(x, categories=sorted(x.unique()), ordered=True)).cat.codes
-                plot_df_group = plot_df_group.sort_values([color_var, "order", "Muestra"])
+                # Ordenar por grupo y muestra (simple y robusto)
+                plot_df_group = plot_df_group.sort_values([color_var, "Muestra"])
 
                 # Gráfico manteniendo solo color por taxón
                 fig = px.bar(
@@ -135,7 +134,6 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                 fig.update_layout(barmode="stack", xaxis_title="Muestra", yaxis_title="% abundancia relativa")
 
                 # --- ANOTACIONES Y LÍNEAS DIVISORIAS PARA GRUPOS ---
-                # Determina el orden de las muestras en el eje X
                 muestras_x = plot_df_group[["Muestra", color_var]].drop_duplicates().reset_index(drop=True)
                 for group in selected_groups:
                     muestras_grupo = muestras_x[muestras_x[color_var] == group]["Muestra"]
@@ -146,7 +144,7 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     # Línea divisoria antes del primer elemento del grupo (excepto el primero)
                     if x0 != 0:
                         fig.add_vline(x=x0-0.5, line_width=1, line_dash="dot", line_color="grey")
-                    # Anotación centrada sobre las muestras del grupo
+                    # Anotación centrada sobre las muestras del grupo (encima del gráfico)
                     xpos = (x0 + x1) / 2
                     fig.add_annotation(
                         x=xpos, y=105,
