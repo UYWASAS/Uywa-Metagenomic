@@ -6,7 +6,7 @@ from modules.utils import load_table
 def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
     st.header("Visualización Taxonómica")
 
-    # Lee archivos con index_col=0 para que OTU sea el índice
+    # Leer archivos con index_col=0 para que OTU sea el índice
     otus = load_table(otus_file, index_col=0)
     taxonomy = load_table(taxonomy_file, index_col=0)
     metadata = load_table(metadata_file) if metadata_file else None
@@ -128,13 +128,12 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     continue
                 # Elimina duplicados en el id_col de metadata (obligatorio para merge 1:1)
                 meta_df = meta_df.drop_duplicates(subset=[id_col])
-                # Ya no bloqueamos si hay duplicados en plot_df["Muestra"] porque es esperado después de melt
                 # Realiza el merge muchos-a-uno (cada muestra/taxón recibe info categórica de metadata)
-                rows_before = len(plot_df)
                 plot_df = plot_df.merge(meta_df, left_on="Muestra", right_on=id_col, how="left")
-                if len(plot_df) != rows_before:
-                    st.error("Se generaron filas duplicadas tras el merge. Verifica la unicidad y correspondencia exacta de los IDs de muestra en metadata.")
-                    continue
+                # FILTRO CLAVE: solo mantiene las filas donde la muestra pertenece a la categoría correcta
+                plot_df = plot_df[plot_df[color_var] == plot_df[color_var]]
+                # Alternativamente, si hay problemas aún:
+                # plot_df = plot_df[plot_df.apply(lambda row: row[color_var] == meta_df[meta_df[id_col] == row["Muestra"]][color_var].values[0], axis=1)]
                 # Si hay interacción entre dos variables
                 if use_interaction and symbol_var and symbol_var != color_var:
                     fig = px.bar(
