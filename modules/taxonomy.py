@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from modules.utils import load_table
 
 def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
@@ -56,8 +57,6 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
         with tabs[i]:
             st.subheader(f"Barplot apilado por {nivel} (top 10 + Otros)")
             color_var = None
-            symbol_var = None
-            use_interaction = False
             if cat_vars:
                 color_var = st.selectbox("Variable de agrupación", cat_vars, index=0, key=f"tax_color_{nivel}")
 
@@ -107,7 +106,7 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     return
                 meta_df = meta_df.drop_duplicates(subset=[id_col])
 
-                # --- NUEVO MÉTODO: Selección múltiple de grupos ---
+                # --- SELECCIÓN MÚLTIPLE DE GRUPOS ---
                 unique_groups = meta_df[color_var].dropna().unique()
                 selected_groups = st.multiselect(
                     f"Selecciona uno o varios valores de '{color_var}' para comparar:",
@@ -122,14 +121,41 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                 plot_df_group = plot_df_group.merge(meta_df[[id_col, color_var]], left_on="Muestra", right_on=id_col, how="left")
                 plot_df_group = plot_df_group[plot_df_group["Porcentaje"] > 0]
 
+                # Ordenar muestras por grupo (opcional, mejora visual)
+                plot_df_group["order"] = plot_df_group.groupby(color_var)["Muestra"].transform(lambda x: pd.Categorical(x, categories=sorted(x.unique()), ordered=True)).cat.codes
+                plot_df_group = plot_df_group.sort_values([color_var, "order", "Muestra"])
+
+                # Gráfico manteniendo solo color por taxón
                 fig = px.bar(
                     plot_df_group,
                     x="Muestra", y="Porcentaje", color=nivel,
-                    pattern_shape=color_var,  # usa patrón o símbolo para diferenciar grupos
-                    title=f"Abundancia relativa por {nivel} en {color_var}: {', '.join(selected_groups)}",
+                    title=f"Abundancia relativa por {nivel} en {color_var}: {', '.join([str(g) for g in selected_groups])}",
                     labels={"Porcentaje": "% abundancia relativa", color_var: color_var}
                 )
                 fig.update_layout(barmode="stack", xaxis_title="Muestra", yaxis_title="% abundancia relativa")
+
+                # --- ANOTACIONES Y LÍNEAS DIVISORIAS PARA GRUPOS ---
+                # Determina el orden de las muestras en el eje X
+                muestras_x = plot_df_group[["Muestra", color_var]].drop_duplicates().reset_index(drop=True)
+                for group in selected_groups:
+                    muestras_grupo = muestras_x[muestras_x[color_var] == group]["Muestra"]
+                    if muestras_grupo.empty:
+                        continue
+                    x0 = muestras_grupo.index[0]
+                    x1 = muestras_grupo.index[-1]
+                    # Línea divisoria antes del primer elemento del grupo (excepto el primero)
+                    if x0 != 0:
+                        fig.add_vline(x=x0-0.5, line_width=1, line_dash="dot", line_color="grey")
+                    # Anotación centrada sobre las muestras del grupo
+                    xpos = (x0 + x1) / 2
+                    fig.add_annotation(
+                        x=xpos, y=105,
+                        text=f"{color_var}: {group}",
+                        showarrow=False,
+                        font=dict(size=13, color="black"),
+                        xref="x", yref="y"
+                    )
+
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 plot_df = plot_df[plot_df["Porcentaje"] > 0]
