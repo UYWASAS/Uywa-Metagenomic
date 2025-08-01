@@ -53,6 +53,8 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
     meta_df = None
     if metadata is not None:
         meta_df = metadata.reset_index()
+        # Intenta encontrar el nombre correcto de la columna de IDs de muestra
+        meta_df.columns = [str(c).strip() for c in meta_df.columns]
         if "Sampleid" not in [c.lower() for c in meta_df.columns]:
             if "index" in meta_df.columns:
                 meta_df = meta_df.rename(columns={"index": "SampleID"})
@@ -110,15 +112,27 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
 
             # Añadir metadata para agrupación/interacción, si aplica
             if meta_df is not None and color_var:
+                # Asegura que las columnas relevantes sean string
+                plot_df["Muestra"] = plot_df["Muestra"].astype(str)
+                meta_df = meta_df.copy()
+                for col in meta_df.columns:
+                    meta_df[col] = meta_df[col].astype(str)
+                # Encuentra la columna de ID de muestra en metadata
                 id_col = None
                 for col in meta_df.columns:
-                    if set(plot_df["Muestra"]).issubset(set(meta_df[col].astype(str))):
+                    if set(plot_df["Muestra"]).issubset(set(meta_df[col])):
                         id_col = col
                         break
                 if id_col is None:
                     st.error("No se encuentra la columna de ID de muestra en la metadata para hacer merge.")
                     continue
+                # Elimina duplicados en el id_col de metadata
+                if meta_df[id_col].duplicated().any():
+                    st.warning(f"La columna '{id_col}' en metadata tiene valores duplicados. Esto puede causar duplicación en el gráfico.")
+                meta_df = meta_df.drop_duplicates(subset=[id_col])
+                # Realiza el merge 1:1
                 plot_df = plot_df.merge(meta_df, left_on="Muestra", right_on=id_col, how="left")
+                # Si hay interacción entre dos variables
                 if use_interaction and symbol_var and symbol_var != color_var:
                     fig = px.bar(
                         plot_df,
