@@ -103,7 +103,7 @@ st.markdown(f"<div style='text-align:right; font-size:13px;'>👤 Usuario: <b>{s
 
 # ======================== BLOQUE 5: TITULO, UPLOADERS Y TABS PRINCIPALES ========================
 st.title("Gestión y Análisis de Microbiota 16S")
-tabs = st.tabs(["Carga de Archivos", "Diversidad", "Análisis Estadístico", "Visualización Taxonómica"])
+tabs = st.tabs(["Carga de Archivos", "Diversidad", "Visualización Taxonómica", "Análisis Estadístico"])
 
 # ======================== BLOQUE 6: CARGA DE ARCHIVOS EN PESTAÑA 0 ========================
 with tabs[0]:
