@@ -112,8 +112,7 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                 meta_df = meta_df.drop_duplicates(subset=[id_col])
                 plot_df = plot_df.merge(meta_df, left_on="Muestra", right_on=id_col, how="left")
 
-                # --- SOLUCIÓN CLAVE: Usa la columna de metadata para agrupar ---
-                # Si existen columnas duplicadas por el merge, elige la correcta
+                # Usa solo la columna de metadata para agrupar y filtra correctamente las muestras por categoría
                 if f"{color_var}_y" in plot_df.columns:
                     plot_df[color_var] = plot_df[f"{color_var}_y"]
                 elif f"{color_var}_x" in plot_df.columns:
@@ -123,6 +122,11 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     if col in plot_df.columns:
                         del plot_df[col]
                 plot_df = plot_df[plot_df[color_var].notnull()]
+
+                # --- FILTRO CLAVE: Solo deja las muestras en su grupo ---
+                # Esto elimina combinaciones inválidas (muestras fuera de su categoría)
+                muestras_validas = meta_df[[id_col, color_var]].drop_duplicates()
+                plot_df = plot_df.merge(muestras_validas, left_on=["Muestra", color_var], right_on=[id_col, color_var], how="inner")
 
                 if use_interaction and symbol_var and symbol_var != color_var:
                     if f"{symbol_var}_y" in plot_df.columns:
