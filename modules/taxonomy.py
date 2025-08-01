@@ -120,18 +120,27 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                 # Encuentra la columna de ID de muestra en metadata
                 id_col = None
                 for col in meta_df.columns:
-                    if set(plot_df["Muestra"]).issubset(set(meta_df[col])):
+                    if set(plot_df["Muestra"]) <= set(meta_df[col]):
                         id_col = col
                         break
                 if id_col is None:
                     st.error("No se encuentra la columna de ID de muestra en la metadata para hacer merge.")
                     continue
-                # Elimina duplicados en el id_col de metadata
-                if meta_df[id_col].duplicated().any():
-                    st.warning(f"La columna '{id_col}' en metadata tiene valores duplicados. Esto puede causar duplicación en el gráfico.")
+                # Elimina duplicados en el id_col de metadata (obligatorio para merge 1:1)
                 meta_df = meta_df.drop_duplicates(subset=[id_col])
-                # Realiza el merge 1:1
+                # Antes del merge, verifica unicidad en ambos lados
+                if meta_df[id_col].duplicated().any():
+                    st.error(f"La columna '{id_col}' en metadata tiene valores duplicados. Esto causará duplicación en el gráfico.")
+                    continue
+                if plot_df["Muestra"].duplicated().any():
+                    st.error("La columna 'Muestra' en datos a graficar tiene duplicados. Esto causará duplicación en el gráfico.")
+                    continue
+                # Realiza el merge 1:1, comprobando que no cambie el número de filas
+                rows_before = len(plot_df)
                 plot_df = plot_df.merge(meta_df, left_on="Muestra", right_on=id_col, how="left")
+                if len(plot_df) != rows_before:
+                    st.error("Se generaron filas duplicadas tras el merge. Verifica la unicidad y correspondencia exacta de los IDs de muestra en metadata.")
+                    continue
                 # Si hay interacción entre dos variables
                 if use_interaction and symbol_var and symbol_var != color_var:
                     fig = px.bar(
