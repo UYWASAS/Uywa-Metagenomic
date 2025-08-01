@@ -60,11 +60,6 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
             use_interaction = False
             if cat_vars:
                 color_var = st.selectbox("Variable de agrupación", cat_vars, index=0, key=f"tax_color_{nivel}")
-                use_interaction = st.checkbox("¿Mostrar interacción entre dos variables?", value=False, key=f"tax_inter_{nivel}")
-                if use_interaction:
-                    symbol_var = st.selectbox("Variable para interacción (símbolo)", cat_vars, index=1 if len(cat_vars) > 1 else 0, key=f"tax_symbol_{nivel}")
-                    if symbol_var == color_var:
-                        st.info("Selecciona dos variables diferentes para la interacción.")
 
             otus_tax = otus.join(taxonomy, how="inner")
             if otus_tax.empty:
@@ -112,18 +107,27 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     return
                 meta_df = meta_df.drop_duplicates(subset=[id_col])
 
-                # --- NUEVO MÉTODO: Selección dinámica de grupo ---
+                # --- NUEVO MÉTODO: Selección múltiple de grupos ---
                 unique_groups = meta_df[color_var].dropna().unique()
-                selected_group = st.selectbox(f"Selecciona un valor de '{color_var}' para graficar:", unique_groups, key=f"select_group_{nivel}")
-                muestras_en_grupo = meta_df.loc[meta_df[color_var] == selected_group, id_col]
+                selected_groups = st.multiselect(
+                    f"Selecciona uno o varios valores de '{color_var}' para comparar:",
+                    unique_groups,
+                    default=list(unique_groups),  # por defecto todos
+                    key=f"multiselect_group_{nivel}"
+                )
+
+                muestras_en_grupo = meta_df.loc[meta_df[color_var].isin(selected_groups), id_col]
                 plot_df_group = plot_df[plot_df["Muestra"].isin(muestras_en_grupo)]
+                # Haz el merge para obtener la columna de grupo en plot_df_group
+                plot_df_group = plot_df_group.merge(meta_df[[id_col, color_var]], left_on="Muestra", right_on=id_col, how="left")
                 plot_df_group = plot_df_group[plot_df_group["Porcentaje"] > 0]
 
                 fig = px.bar(
                     plot_df_group,
                     x="Muestra", y="Porcentaje", color=nivel,
-                    title=f"Abundancia relativa por {nivel} en {color_var} = {selected_group}",
-                    labels={"Porcentaje": "% abundancia relativa"}
+                    pattern_shape=color_var,  # usa patrón o símbolo para diferenciar grupos
+                    title=f"Abundancia relativa por {nivel} en {color_var}: {', '.join(selected_groups)}",
+                    labels={"Porcentaje": "% abundancia relativa", color_var: color_var}
                 )
                 fig.update_layout(barmode="stack", xaxis_title="Muestra", yaxis_title="% abundancia relativa")
                 st.plotly_chart(fig, use_container_width=True)
