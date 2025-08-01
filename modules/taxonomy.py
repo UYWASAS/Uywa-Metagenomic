@@ -34,7 +34,8 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
     st.write(f"OTUs en matriz y NO en taxonomía (max 5): {list(missing_in_tax)[:5]}")
     st.write(f"OTUs en taxonomía y NO en matriz (max 5): {list(missing_in_otus)[:5]}")
 
-    if not otus.index.isin(taxonomy.index).any():
+    # Verifica que haya al menos algún OTU compartido
+    if len(set(otus.index) & set(taxonomy.index)) == 0:
         st.error("No hay coincidencias entre los OTU IDs de la matriz y la tabla de taxonomía.")
         st.stop()
 
@@ -79,15 +80,20 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                 st.warning("La unión OTU-taxonomía no produjo datos. Revisa que los IDs coincidan exactamente.")
                 continue
 
-            # Agrupar por nivel taxonómico y sumar abundancias por muestra
+            # Agrupar por nivel taxonómico y sumar SOLO columnas numéricas (abundancias)
+            num_cols = otus.columns  # Se asume que todas las columnas en otus son numéricas
             if nivel not in otus_tax.columns:
                 st.warning(f"No se encontró el nivel '{nivel}' en la tabla de taxonomía.")
                 continue
-            tax_sum = otus_tax.groupby(nivel).sum()
+
+            tax_sum = otus_tax.groupby(nivel)[num_cols].sum()
+            if tax_sum.empty or tax_sum.shape[0] == 0:
+                st.warning(f"No se encontraron datos agrupados por el nivel '{nivel}'.")
+                continue
 
             # Selecciona top 10 taxones + Otros
             top_taxa = tax_sum.sum(axis=1).sort_values(ascending=False).head(10).index
-            tax_sum_top = tax_sum.loc[top_taxa]
+            tax_sum_top = tax_sum.loc[top_taxa].copy()
             other_taxa = tax_sum.drop(top_taxa, errors="ignore")
             if not other_taxa.empty:
                 tax_sum_top.loc["Otros"] = other_taxa.sum()
