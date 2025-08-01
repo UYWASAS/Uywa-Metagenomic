@@ -101,6 +101,7 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                 meta_df = meta_df.copy()
                 for col in meta_df.columns:
                     meta_df[col] = meta_df[col].astype(str)
+                # Encuentra la columna de ID de muestra
                 id_col = None
                 for col in meta_df.columns:
                     if set(plot_df["Muestra"]).issubset(set(meta_df[col])):
@@ -110,39 +111,22 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     st.error("No se encuentra la columna de ID de muestra en la metadata para hacer merge.")
                     return
                 meta_df = meta_df.drop_duplicates(subset=[id_col])
-                # Solo une las columnas relevantes (nunca toda la metadata)
-                plot_df = plot_df.merge(meta_df[[id_col, color_var]], left_on="Muestra", right_on=id_col, how="left")
-                # FILTRO CLAVE: solo filas donde la muestra está en su categoría
-                plot_df = plot_df[plot_df["Muestra"] == plot_df[id_col]]
-                plot_df = plot_df.drop(columns=[id_col])
-                plot_df = plot_df[plot_df["Porcentaje"] > 0]
 
-                if use_interaction and symbol_var and symbol_var != color_var:
-                    if f"{symbol_var}_y" in plot_df.columns:
-                        plot_df[symbol_var] = plot_df[f"{symbol_var}_y"]
-                    elif f"{symbol_var}_x" in plot_df.columns:
-                        plot_df[symbol_var] = plot_df[f"{symbol_var}_x"]
-                    for suf in ["_x", "_y"]:
-                        col = f"{symbol_var}{suf}"
-                        if col in plot_df.columns:
-                            del plot_df[col]
-                    plot_df = plot_df[plot_df[symbol_var].notnull()]
-                    fig = px.bar(
-                        plot_df,
-                        x="Muestra", y="Porcentaje", color=nivel,
-                        facet_col=color_var,
-                        pattern_shape=symbol_var,
-                        title=f"Abundancia relativa por {nivel} agrupado por {color_var} y {symbol_var}",
-                        labels={"Porcentaje": "% abundancia relativa"}
-                    )
-                else:
-                    fig = px.bar(
-                        plot_df,
-                        x="Muestra", y="Porcentaje", color=nivel,
-                        facet_col=color_var,
-                        title=f"Abundancia relativa por {nivel} agrupado por {color_var}",
-                        labels={"Porcentaje": "% abundancia relativa"}
-                    )
+                # --- NUEVO MÉTODO: Selección dinámica de grupo ---
+                unique_groups = meta_df[color_var].dropna().unique()
+                selected_group = st.selectbox(f"Selecciona un valor de '{color_var}' para graficar:", unique_groups, key=f"select_group_{nivel}")
+                muestras_en_grupo = meta_df.loc[meta_df[color_var] == selected_group, id_col]
+                plot_df_group = plot_df[plot_df["Muestra"].isin(muestras_en_grupo)]
+                plot_df_group = plot_df_group[plot_df_group["Porcentaje"] > 0]
+
+                fig = px.bar(
+                    plot_df_group,
+                    x="Muestra", y="Porcentaje", color=nivel,
+                    title=f"Abundancia relativa por {nivel} en {color_var} = {selected_group}",
+                    labels={"Porcentaje": "% abundancia relativa"}
+                )
+                fig.update_layout(barmode="stack", xaxis_title="Muestra", yaxis_title="% abundancia relativa")
+                st.plotly_chart(fig, use_container_width=True)
             else:
                 plot_df = plot_df[plot_df["Porcentaje"] > 0]
                 fig = px.bar(
@@ -151,6 +135,5 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
                     title=f"Abundancia relativa por {nivel} (Top 10 + Otros)",
                     labels={"Porcentaje": "% abundancia relativa"}
                 )
-
-            fig.update_layout(barmode="stack", xaxis_title="Muestra", yaxis_title="% abundancia relativa")
-            st.plotly_chart(fig, use_container_width=True)
+                fig.update_layout(barmode="stack", xaxis_title="Muestra", yaxis_title="% abundancia relativa")
+                st.plotly_chart(fig, use_container_width=True)
