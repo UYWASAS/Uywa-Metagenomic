@@ -24,13 +24,7 @@ def taxonomy_tab(otus_file, taxonomy_file, metadata_file):
     otus.index = otus.index.map(clean_otu_id)
     taxonomy.index = taxonomy.index.map(clean_otu_id)
 
-    missing_in_tax = set(otus.index) - set(taxonomy.index)
-    missing_in_otus = set(taxonomy.index) - set(otus.index)
-
-    st.write(f"Primeros 5 OTUs en matriz: {list(otus.index[:5])}")
-    st.write(f"Primeros 5 OTUs en taxonomía: {list(taxonomy.index[:5])}")
-    st.write(f"OTUs en matriz y NO en taxonomía (max 5): {list(missing_in_tax)[:5]}")
-    st.write(f"OTUs en taxonomía y NO en matriz (max 5): {list(missing_in_otus)[:5]}")
+    # --- Aquí eliminamos la impresión/resumen de coincidencia de OTUs ---
 
     if len(set(otus.index) & set(taxonomy.index)) == 0:
         st.error("No hay coincidencias entre los OTU IDs de la matriz y la tabla de taxonomía.")
